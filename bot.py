@@ -11,10 +11,10 @@ from datetime import datetime
 
 
 
-async def send_message(message, user_message, is_private):
+async def send_message(message, user_message):
     try:
         response = responses.handle_response(user_message)
-        await message.author.send(response) if is_private else await message.channel.send(response)
+        await message.channel.send(response)
     except Exception as e:
         print(e)
 
@@ -75,9 +75,7 @@ def run_discord_bot():
         if usr_msg[0:9].lower() == "remind me":
             '''expecting form: remind me, [name/msg], [time], [unit] '''
             tmp = list(map(str.strip, usr_msg.split(',')))
-            task = tmp[1]
-            time = int(tmp[2])
-            unit = tmp[3]
+            task, time, unit = tmp[1], int(tmp[2]), tmp[3]
             if unit == "s":
                 remind_time = time
             elif unit == "m":
@@ -90,27 +88,16 @@ def run_discord_bot():
             if remind_time == -1:
                 # unclear units (maybe add days ?)
                 usr_msg  = "reminder: Unknown time unit. Aborting."
-                await send_message(msg, usr_msg, is_private=False)
+                await send_message(msg, usr_msg)
                 return
 
             await asyncio.sleep(remind_time)
             remind_msg = f"reminder: {task}"
-            await send_message(msg, remind_msg, is_private=False)
+            await send_message(msg, remind_msg)
             return
 
-
-        # for debugging
-        # print(f"{username} said {usr_msg} in {channel}")
-
-        # if want a private message
-        # if usr_msg[0] == '?':
-        #     usr_msg = usr_msg[1:]
-        #     await send_message(msg, usr_msg, is_private=True)
-        # else:
-        #     await send_message(msg, usr_msg, is_private=False)
-
         # general message to be catched by handle_responses()
-        await send_message(msg, usr_msg, is_private=False)
+        await send_message(msg, usr_msg)
 
 
     client.run(TOKEN)
