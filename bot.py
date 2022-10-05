@@ -9,7 +9,7 @@ import openai
 from dotenv import load_dotenv
 load_dotenv()
 
-########## START GLOBAL VARS ##########
+############################## GLOBAL VARS ##############################
 TOKEN = os.getenv('DISCORD_TOKEN')
 MAIN_CHANNEL_ID = int(os.getenv('MAIN_CHANNEL_ID'))
 PHOTOS_DIR = os.getenv('PHOTOS_DIR')
@@ -27,11 +27,7 @@ GPT3_SETTINGS = {
     "catgirl_roleplay": ["False", "bool"]
 }
 
-# TODO: maybe you want to check types for user changing GPT3 values, but users is just me for now
-# GPT3_SETTINGS_STR_DTYPES = ["engine"]
-# GPT3_SETTINGS_FLOAT_DTYPES = ["temperature", "top_p", "frequency_penalty", "presence_penalty"]
-# GPT3_SETTINGS_INT_DTYPES = ["max_tokens"]
-########## END GLOBAL VARS ##########
+############################## GLOBAL VARS ##############################
 
 ############################## GPT 3 ##############################
 
@@ -141,9 +137,6 @@ def run_discord_bot():
         username = str(msg.author)
         usr_msg = str(msg.content)
         channel = str(msg.channel)
-
-        # for debugging
-        # print(f"{username}\n{usr_msg}\n{channel}")
 
         ############################## GPT 3 ##############################
 
