@@ -18,12 +18,13 @@ MAIN_CHANNEL_NAME = os.getenv('MAIN_CHANNEL_NAME')
 openai.api_key = os.getenv('GPT3_OPENAI_API_KEY')
 GPT3_CHANNEL_NAME = os.getenv('GPT3_CHANNEL_NAME')
 GPT3_SETTINGS = {
-    "engine":"text-davinci-002",
-    "temperature":"0.7",
-    "max_tokens":"100",
-    "top_p":"1",
-    "frequency_penalty":"0",
-    "presence_penalty":"0"
+    "engine": ["text-davinci-002", "str"],
+    "temperature": ["0.7", "float"],
+    "max_tokens": ["100", "int"],
+    "top_p": ["1.0", "float"],
+    "frequency_penalty": ["0", "float"],
+    "presence_penalty": ["0", "float"],
+    "catgirl_roleplay": ["False", "bool"]
 }
 
 # TODO: maybe you want to check types for user changing GPT3 values, but users is just me for now
@@ -32,19 +33,52 @@ GPT3_SETTINGS = {
 # GPT3_SETTINGS_INT_DTYPES = ["max_tokens"]
 ########## END GLOBAL VARS ##########
 
+############################## GPT 3 ##############################
 
 async def gen_gpt3(message, usr_msg):
+    # inject additional context for simple roleplay
+    if bool(GPT3_SETTINGS["catgirl_roleplay"]):
+        usr_msg = f"You are a childhood friend anime catgirl, responding to your beloved friend who says: {usr_msg}. You say: "
+
     response = openai.Completion.create(
-        engine = GPT3_SETTINGS["engine"],
+        engine = GPT3_SETTINGS["engine"][0],
         prompt = usr_msg,
-                temperature = float(GPT3_SETTINGS["temperature"]),
-                max_tokens = int(GPT3_SETTINGS["max_tokens"]),
-                top_p = float(GPT3_SETTINGS["top_p"]),
-                frequency_penalty = float(GPT3_SETTINGS["frequency_penalty"]),
-                presence_penalty = float(GPT3_SETTINGS["presence_penalty"])
+                temperature = float(GPT3_SETTINGS["temperature"][0]),
+                max_tokens = int(GPT3_SETTINGS["max_tokens"][0]),
+                top_p = float(GPT3_SETTINGS["top_p"][0]),
+                frequency_penalty = float(GPT3_SETTINGS["frequency_penalty"][0]),
+                presence_penalty = float(GPT3_SETTINGS["presence_penalty"][0])
     )
     content = response.choices[0].text
     await message.channel.send(content)
+
+async def gptsettings(msg):
+    '''
+    original call is:
+        GPTSETTINGS
+
+    prints out all available gpt3 settings, their current values, and their data types
+    '''
+    gpt3_settings = "".join([f"{key} ({GPT3_SETTINGS[key][1]}) = {GPT3_SETTINGS[key][0]}\n" for key in GPT3_SETTINGS.keys()])
+    await msg.channel.send(gpt3_settings)
+
+async def gptset(msg, usr_msg):
+    '''
+    original call is:
+        GPTSET [setting_name] [new_value]
+
+    sets the specified gpt3 parameter to the new value
+    '''
+    try:
+        tmp = usr_msg.split()
+        setting, new_val = tmp[1], tmp[2]
+        GPT3_SETTINGS[setting][0] = new_val # always gonna store str
+        await msg.channel.send("New parameter saved, current settings:")
+        await gptsettings(msg)
+    except Exception as e:
+        await msg.channel.send("usage: GPTSET [setting_name] [new_value]")
+
+############################## GPT 3 ##############################
 
 # responds to user when given a message
 async def send_message(message, user_message):
@@ -120,20 +154,13 @@ def run_discord_bot():
 
         # show user current GPT3 settings
         if usr_msg == "GPTSETTINGS":
-            gpt3_settings = f"engine (str) = {GPT3_SETTINGS['engine']}\ntemperature (float) = {GPT3_SETTINGS['temperature']}\nmax_tokens (int) = {GPT3_SETTINGS['max_tokens']}\ntop_p (float) = {GPT3_SETTINGS['top_p']}\nfrequency_penalty (float) = {GPT3_SETTINGS['frequency_penalty']}\npresence_penalty (float) = {GPT3_SETTINGS['presence_penalty']}"
-            await msg.channel.send(gpt3_settings)
+            await gptsettings(msg)
             return
 
         # user wants to modify GPT3 settings
         if usr_msg[0:6] == "GPTSET":
             ''' expect format: GPTSET [setting_name] [new_value]'''
-            try:
-                tmp = usr_msg.split()
-                setting, new_val = tmp[1], tmp[2]
-                GPT3_SETTINGS[setting] = new_val # always gonna store str
-                await msg.channel.send("saved")
-            except Exception as e:
-                await msg.channel.send("usage: GPTSET [setting_name] [new_value]")
+            await gptset(msg, usr_msg)
             return
 
         # only respond to me when in channel MAIN_CHANNEL, unless overrided with '!'
@@ -188,7 +215,6 @@ def run_discord_bot():
             return
 
         ############################## Custom Commands ##############################
-
 
         # general message to be catched by handle_responses() -- hard coded responses
         await send_message(msg, usr_msg)
