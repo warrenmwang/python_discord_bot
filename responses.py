@@ -1,4 +1,3 @@
-import random
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -28,35 +27,18 @@ d = {
     "you're cute":"me? *looks at your adoringly*",
     "you’re cute":"me? *looks at your adoringly*",
     "you're so smart":"thanks master :) <3",
-    "you’re so smart":"thanks master :) <3"
+    "you’re so smart":"thanks master :) <3",
+    "how are you?":"I'm doing great, now that you're here ;)"
 }
 
+# these are mostly random functionalities
 def handle_response(msg) -> str:
-    # lowercase 
-    x = msg.lower()
-
-    if x[0:5] == "echo:":
-        tmp = x[5:]
-        return tmp
-
     try:
-        return d[x]
+        return d[msg.lower()]
     except Exception as e:
         pass
 
-    if x == "diceroll":
-        return str(random.randint(1, 6))
-
-    # slightly danger zone where I'm running code...
-    if x[0:5] == 'calc:':
-        tmp = x.split(":")
-        return eval(tmp[1])
-    if x[0:5] == 'exec:':
-        tmp = x.split(":")
-        os.system(tmp[1])
-        return f"{tmp[1]} executed"
-
-    if x[0:10] == "reminder: ":
-        return f"REMINDER: {x[10:]}"
+    if "aww" in msg:
+        return "😊"
 
     return "not sure what you said"
