@@ -1,4 +1,5 @@
 import os
+import discord
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -32,7 +33,7 @@ d = {
 }
 
 # these are mostly random functionalities
-def handle_response(msg) -> str:
+def handle_response(msg : discord.message.Message) -> str:
     try:
         return d[msg.lower()]
     except Exception as e:

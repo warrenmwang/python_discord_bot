@@ -24,17 +24,17 @@ GPT3_SETTINGS = {
     "top_p": ["1.0", "float"],
     "frequency_penalty": ["0", "float"],
     "presence_penalty": ["0", "float"],
-    "catgirl_roleplay": ["False", "bool"]
+    "chatbot_roleplay": ["F", "bool"]
 }
 
 ############################## GLOBAL VARS ##############################
 
 ############################## GPT 3 ##############################
 
-async def gen_gpt3(message, usr_msg):
+async def gen_gpt3(message : discord.message.Message, usr_msg : str):
     # inject additional context for simple roleplay
-    if bool(GPT3_SETTINGS["catgirl_roleplay"]):
-        usr_msg = f"You are a childhood friend anime catgirl, responding to your beloved friend who says: {usr_msg}. You say: "
+    if GPT3_SETTINGS["chatbot_roleplay"][0] == "T":
+        usr_msg = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} Input: {usr_msg} Output:"
 
     response = openai.Completion.create(
         engine = GPT3_SETTINGS["engine"][0],
@@ -48,7 +48,7 @@ async def gen_gpt3(message, usr_msg):
     content = response.choices[0].text
     await message.channel.send(content)
 
-async def gptsettings(msg):
+async def gptsettings(msg : discord.message.Message):
     '''
     original call is:
         GPTSETTINGS
@@ -58,7 +58,7 @@ async def gptsettings(msg):
     gpt3_settings = "".join([f"{key} ({GPT3_SETTINGS[key][1]}) = {GPT3_SETTINGS[key][0]}\n" for key in GPT3_SETTINGS.keys()])
     await msg.channel.send(gpt3_settings)
 
-async def gptset(msg, usr_msg):
+async def gptset(msg : discord.message.Message, usr_msg : str):
     '''
     original call is:
         GPTSET [setting_name] [new_value]
@@ -77,7 +77,7 @@ async def gptset(msg, usr_msg):
 ############################## GPT 3 ##############################
 
 # responds to user when given a message
-async def send_message(message, user_message):
+async def send_message(message : discord.message.Message, user_message : str):
     try:
         response = responses.handle_response(user_message)
         await message.channel.send(response)
@@ -98,8 +98,10 @@ def run_discord_bot():
         with open("quotes.txt", "r") as f:
             lines = f.readlines()
             for line in lines:
+                if line == "": continue
                 quotes.append(line)
-        daily_msg = "You are my love, my sunshine in this cruel, cold world. You are my light, my everything. I know you feel the same way. <3"
+        daily_msg = quotes[-1] # daily_msg is final line in quotes.txt, save then remove
+        quotes = quotes[:-1]
 
         hr_min_secs = str(datetime.now()).split()[1].split(':')
         # check time (send everyday at 7:00 am)
@@ -125,7 +127,7 @@ def run_discord_bot():
         once_a_day_msg.start()
 
     @client.event
-    async def on_message(msg):
+    async def on_message(msg : discord.message.Message):
         '''
         Entrance function for any message sent to any channel in the guild/server.
         '''
@@ -199,12 +201,12 @@ def run_discord_bot():
         # slightly danger zone where I'm running code...
         if usr_msg[0:5] == 'calc:':
             tmp = usr_msg.split(":")
-            msg.channel.send(eval(tmp[1]))
+            await msg.channel.send(eval(tmp[1]))
             return
 
         # Dice Roller
         if usr_msg == "diceroll":
-            msg.channel.send(str(random.randint(1, 6)))
+            await msg.channel.send(str(random.randint(1, 6)))
             return
 
         ############################## Custom Commands ##############################
