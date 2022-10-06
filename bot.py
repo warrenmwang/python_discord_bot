@@ -7,6 +7,8 @@ import responses
 import os
 import openai
 from dotenv import load_dotenv
+import subprocess
+
 load_dotenv()
 
 ############################## GLOBAL VARS ##############################
@@ -14,6 +16,12 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 MAIN_CHANNEL_ID = int(os.getenv('MAIN_CHANNEL_ID'))
 PHOTOS_DIR = os.getenv('PHOTOS_DIR')
 MAIN_CHANNEL_NAME = os.getenv('MAIN_CHANNEL_NAME')
+
+STABLE_DIFFUSION_CHANNEL_NAME = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME')
+STABLE_DIFFUSION_PYTHON_BIN_PATH = os.getenv('STABLE_DIFFUSION_PYTHON_BIN_PATH')
+STABLE_DIFFUSION_SCRIPT_PATH = os.getenv('STABLE_DIFFUSION_SCRIPT_PATH')
+STABLE_DIFFUSION_ARGS = os.getenv('STABLE_DIFFUSION_ARGS')
+STABLE_DIFFUSION_OUTPUT_DIR = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
 
 openai.api_key = os.getenv('GPT3_OPENAI_API_KEY')
 GPT3_CHANNEL_NAME = os.getenv('GPT3_CHANNEL_NAME')
@@ -24,10 +32,49 @@ GPT3_SETTINGS = {
     "top_p": ["1.0", "float"],
     "frequency_penalty": ["0", "float"],
     "presence_penalty": ["0", "float"],
-    "chatbot_roleplay": ["F", "bool"]
+    "chatbot_roleplay": ["F", "str"]
 }
 
-############################## GLOBAL VARS ##############################
+ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME]
+
+############################## STABLE DIFFUSION ##############################
+
+async def gen_stable_diffusion(msg, usr_msg):
+    '''
+    takes in usr_msg as the prompt (and generation params, don't need to include outdir, automatically added)
+    and generate image(s) using stablediffusion, then send them back to the user
+    '''
+    # first generate image(s)
+    prompt_file = f"{STABLE_DIFFUSION_OUTPUT_DIR}/prompt_file.txt"
+    with open(prompt_file, "w") as f:
+        f.write(f"{usr_msg} --outdir {STABLE_DIFFUSION_OUTPUT_DIR}")
+        f.write('\n')
+
+    cmd = f"{STABLE_DIFFUSION_PYTHON_BIN_PATH} {STABLE_DIFFUSION_SCRIPT_PATH} {STABLE_DIFFUSION_ARGS} {prompt_file}"
+    try:
+        subprocess.run(cmd, shell=True)
+    except Exception as e:
+        await msg.channel.send(f"StableDiffusion: got error on subprocess: {e}")
+        return
+
+    # send image(s) back to user
+    imgs_to_send = []
+    for file in os.listdir(STABLE_DIFFUSION_OUTPUT_DIR):
+        file_path = os.path.join(STABLE_DIFFUSION_OUTPUT_DIR, file)
+        if file_path[-4:] == ".png":
+            imgs_to_send.append(file_path)
+    for img in imgs_to_send:
+        await msg.channel.send(file=discord.File(img))
+
+    # delete all files in outputdir
+    for file in os.listdir(STABLE_DIFFUSION_OUTPUT_DIR):
+        file_path = os.path.join(STABLE_DIFFUSION_OUTPUT_DIR, file)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+        except Exception as e:
+            await msg.channel.send("something went wrong in cleanup procedure in stable diffusion")
+
 
 ############################## GPT 3 ##############################
 
@@ -74,17 +121,8 @@ async def gptset(msg : discord.message.Message, usr_msg : str):
     except Exception as e:
         await msg.channel.send("usage: GPTSET [setting_name] [new_value]")
 
-############################## GPT 3 ##############################
+############################## Main Function ##############################
 
-# responds to user when given a message
-async def send_message(message : discord.message.Message, user_message : str):
-    try:
-        response = responses.handle_response(user_message)
-        await message.channel.send(response)
-    except Exception as e:
-        print(e)
-
-# main func
 def run_discord_bot():
     intents = discord.Intents.all()
     client = discord.Client(intents=intents)
@@ -131,14 +169,24 @@ def run_discord_bot():
         '''
         Entrance function for any message sent to any channel in the guild/server.
         '''
+        # username = str(msg.author)
+        usr_msg = str(msg.content)
+        channel = str(msg.channel)
+
+        ############################## Checks for not doing anything ##############################
 
         # don't respond to yourself
         if msg.author == client.user:
             return 
-        
-        username = str(msg.author)
-        usr_msg = str(msg.content)
-        channel = str(msg.channel)
+
+        # only respond if usr sends a msg in one of the allowed channels
+        if channel not in ALLOWED_CHANNELS:
+            return
+
+        ############################## StableDiffusion ##############################
+        if channel == STABLE_DIFFUSION_CHANNEL_NAME:
+            await gen_stable_diffusion(msg, usr_msg)
+            return
 
         ############################## GPT 3 ##############################
 
@@ -157,15 +205,6 @@ def run_discord_bot():
             ''' expect format: GPTSET [setting_name] [new_value]'''
             await gptset(msg, usr_msg)
             return
-
-        # only respond to me when in channel MAIN_CHANNEL, unless overrided with '!'
-        if channel != MAIN_CHANNEL_NAME:
-            if usr_msg[0] == '!':
-                usr_msg = usr_msg[1:]
-            else:
-                return
-
-        ############################## GPT 3 ##############################
 
         ############################## Custom Commands ##############################
 
@@ -186,8 +225,7 @@ def run_discord_bot():
                     
                 if remind_time == -1:
                     # unclear units (maybe add days ?)
-                    usr_msg  = "only time units implemented: s, m, h"
-                    await send_message(msg, usr_msg)
+                    await msg.channel.send("only time units implemented: s, m, h")
                     return
 
                 await msg.channel.send("Reminder set.")
@@ -209,10 +247,12 @@ def run_discord_bot():
             await msg.channel.send(str(random.randint(1, 6)))
             return
 
-        ############################## Custom Commands ##############################
-
+        ############################## For Hard Coded Response ##############################
         # general message to be catched by handle_responses() -- hard coded responses
-        await send_message(msg, usr_msg)
-
+        try:
+            response = responses.handle_response(usr_msg)
+            await msg.channel.send(response)
+        except Exception as e:
+            print(e)
 
     client.run(TOKEN)
