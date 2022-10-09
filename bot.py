@@ -17,10 +17,12 @@ MAIN_CHANNEL_ID = int(os.getenv('MAIN_CHANNEL_ID'))
 PHOTOS_DIR = os.getenv('PHOTOS_DIR')
 MAIN_CHANNEL_NAME = os.getenv('MAIN_CHANNEL_NAME')
 
-STABLE_DIFFUSION_CHANNEL_NAME = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME')
+STABLE_DIFFUSION_CHANNEL_NAME_1 = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME_1')
+STABLE_DIFFUSION_CHANNEL_NAME_2 = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME_2')
 STABLE_DIFFUSION_PYTHON_BIN_PATH = os.getenv('STABLE_DIFFUSION_PYTHON_BIN_PATH')
 STABLE_DIFFUSION_SCRIPT_PATH = os.getenv('STABLE_DIFFUSION_SCRIPT_PATH')
-STABLE_DIFFUSION_ARGS = os.getenv('STABLE_DIFFUSION_ARGS')
+STABLE_DIFFUSION_ARGS_1 = os.getenv('STABLE_DIFFUSION_ARGS_1')
+STABLE_DIFFUSION_ARGS_2 = os.getenv('STABLE_DIFFUSION_ARGS_2')
 STABLE_DIFFUSION_OUTPUT_DIR = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
 
 openai.api_key = os.getenv('GPT3_OPENAI_API_KEY')
@@ -35,11 +37,11 @@ GPT3_SETTINGS = {
     "chatbot_roleplay": ["F", "str"]
 }
 
-ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME]
+ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2]
 
 ############################## STABLE DIFFUSION ##############################
 
-async def gen_stable_diffusion(msg, usr_msg):
+async def gen_stable_diffusion(msg, usr_msg, chnl_num):
     '''
     takes in usr_msg as the prompt (and generation params, don't need to include outdir, automatically added)
     and generate image(s) using stablediffusion, then send them back to the user
@@ -50,7 +52,11 @@ async def gen_stable_diffusion(msg, usr_msg):
         f.write(f"{usr_msg} --outdir {STABLE_DIFFUSION_OUTPUT_DIR}")
         f.write('\n')
 
-    cmd = f"{STABLE_DIFFUSION_PYTHON_BIN_PATH} {STABLE_DIFFUSION_SCRIPT_PATH} {STABLE_DIFFUSION_ARGS} {prompt_file}"
+    if chnl_num == 1:
+        cmd = f"{STABLE_DIFFUSION_PYTHON_BIN_PATH} {STABLE_DIFFUSION_SCRIPT_PATH} {STABLE_DIFFUSION_ARGS_1} {prompt_file}"
+    else:
+        cmd = f"{STABLE_DIFFUSION_PYTHON_BIN_PATH} {STABLE_DIFFUSION_SCRIPT_PATH} {STABLE_DIFFUSION_ARGS_2} {prompt_file}"
+
     try:
         subprocess.run(cmd, shell=True)
     except Exception as e:
@@ -184,8 +190,11 @@ def run_discord_bot():
             return
 
         ############################## StableDiffusion ##############################
-        if channel == STABLE_DIFFUSION_CHANNEL_NAME:
-            await gen_stable_diffusion(msg, usr_msg)
+        if channel == STABLE_DIFFUSION_CHANNEL_NAME_1:
+            await gen_stable_diffusion(msg, usr_msg, chnl_num=1)
+            return
+        elif channel == STABLE_DIFFUSION_CHANNEL_NAME_2:
+            await gen_stable_diffusion(msg, usr_msg, chnl_num=2)
             return
 
         ############################## GPT 3 ##############################
@@ -213,7 +222,7 @@ def run_discord_bot():
             '''expecting form: remind me, [name/msg], [time], [unit] '''
             try:
                 tmp = list(map(str.strip, usr_msg.split(',')))
-                task, time, unit = tmp[1], int(tmp[2]), tmp[3]
+                task, time, unit = tmp[1], float(tmp[2]), tmp[3]
                 if unit == "s":
                     remind_time = time
                 elif unit == "m":
@@ -238,8 +247,11 @@ def run_discord_bot():
         # Python Calculator
         # slightly danger zone where I'm running code...
         if usr_msg[0:5] == 'calc:':
-            tmp = usr_msg.split(":")
-            await msg.channel.send(eval(tmp[1]))
+            try:
+                tmp = usr_msg.split(":")
+                await msg.channel.send(eval(tmp[1]))
+            except Exception as e:
+                await msg.channel.send("usage: calc: [math exp in python]")    
             return
 
         # Dice Roller
