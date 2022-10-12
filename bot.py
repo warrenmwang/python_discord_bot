@@ -36,6 +36,8 @@ GPT3_SETTINGS = {
     "presence_penalty": ["0", "float"],
     "chatbot_roleplay": ["F", "str"]
 }
+MY_NAME = os.getenv('MY_NAME')
+MY_DREAM = os.getenv('MY_DREAM')
 
 ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2]
 
@@ -84,48 +86,41 @@ async def gen_stable_diffusion(msg, usr_msg, chnl_num):
 
 ############################## GPT 3 ##############################
 
-async def gen_gpt3(message : discord.message.Message, usr_msg : str):
-    # inject additional context for simple roleplay
-    if GPT3_SETTINGS["chatbot_roleplay"][0] == "T":
-        usr_msg = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} Input: {usr_msg} Output:"
-
+async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
+    '''
+    retrieves a GPT3 response given a string input and a dictionary containing the settings to use
+    returns the response str
+    '''
     response = openai.Completion.create(
-        engine = GPT3_SETTINGS["engine"][0],
+        engine = settings_dict["engine"][0],
         prompt = usr_msg,
-                temperature = float(GPT3_SETTINGS["temperature"][0]),
-                max_tokens = int(GPT3_SETTINGS["max_tokens"][0]),
-                top_p = float(GPT3_SETTINGS["top_p"][0]),
-                frequency_penalty = float(GPT3_SETTINGS["frequency_penalty"][0]),
-                presence_penalty = float(GPT3_SETTINGS["presence_penalty"][0])
+                temperature = float(settings_dict["temperature"][0]),
+                max_tokens = int(settings_dict["max_tokens"][0]),
+                top_p = float(settings_dict["top_p"][0]),
+                frequency_penalty = float(settings_dict["frequency_penalty"][0]),
+                presence_penalty = float(settings_dict["presence_penalty"][0])
     )
-    content = response.choices[0].text
-    await message.channel.send(content)
+    return response.choices[0].text
 
-async def gptsettings(msg : discord.message.Message):
+async def gptsettings(msg : discord.message.Message) -> None:
     '''
     original call is:
         GPTSETTINGS
 
     prints out all available gpt3 settings, their current values, and their data types
     '''
-    gpt3_settings = "".join([f"{key} ({GPT3_SETTINGS[key][1]}) = {GPT3_SETTINGS[key][0]}\n" for key in GPT3_SETTINGS.keys()])
-    await msg.channel.send(gpt3_settings)
+    await msg.channel.send("".join([f"{key} ({GPT3_SETTINGS[key][1]}) = {GPT3_SETTINGS[key][0]}\n" for key in GPT3_SETTINGS.keys()]))
 
-async def gptset(msg : discord.message.Message, usr_msg : str):
+async def gptset(usr_msg : str) -> None:
     '''
     original call is:
         GPTSET [setting_name] [new_value]
 
     sets the specified gpt3 parameter to the new value
     '''
-    try:
-        tmp = usr_msg.split()
-        setting, new_val = tmp[1], tmp[2]
-        GPT3_SETTINGS[setting][0] = new_val # always gonna store str
-        await msg.channel.send("New parameter saved, current settings:")
-        await gptsettings(msg)
-    except Exception as e:
-        await msg.channel.send("usage: GPTSET [setting_name] [new_value]")
+    tmp = usr_msg.split()
+    setting, new_val = tmp[1], tmp[2]
+    GPT3_SETTINGS[setting][0] = new_val # always gonna store str
 
 ############################## Main Function ##############################
 
@@ -134,10 +129,19 @@ def run_discord_bot():
     client = discord.Client(intents=intents)
 
     @tasks.loop(seconds = 30)
-    async def once_a_day_msg():
-        '''
-        send a glorified good morning message
-        '''
+    async def msgs_on_loop():
+        hr_min_secs = str(datetime.now()).split()[1].split(':')
+        msgs_on_loop_channel = client.get_channel(MAIN_CHANNEL_ID)
+        msgs_on_loop_gpt_settings = {
+                "engine": ["text-davinci-002", "str"],
+                "temperature": ["0.7", "float"],
+                "max_tokens": ["200", "int"],
+                "top_p": ["1.0", "float"],
+                "frequency_penalty": ["0", "float"],
+                "presence_penalty": ["0", "float"],
+            }
+
+        # send a good morning msg at 7:00am
         quotes = []
         with open("quotes.txt", "r") as f:
             lines = f.readlines()
@@ -146,20 +150,36 @@ def run_discord_bot():
                 quotes.append(line)
         daily_msg = quotes[-1] # daily_msg is final line in quotes.txt, save then remove
         quotes = quotes[:-1]
-
-        hr_min_secs = str(datetime.now()).split()[1].split(':')
-        # check time (send everyday at 7:00 am)
         if hr_min_secs[0] == '07' and hr_min_secs[1] == '00':
-        ###### send msg #####
-            channel = client.get_channel(MAIN_CHANNEL_ID)
-            # send msg (quote and daily personal)
             msg = f"{daily_msg}\n\n{random.choice(quotes)}"
-            await channel.send(msg)
-            # send an image (randomly chosen from one of my stablediffusion creations)
+            await msgs_on_loop_channel.send(msg)
             img_name = random.choice(os.listdir(PHOTOS_DIR))
             img_full_path = f"{PHOTOS_DIR}/{img_name}"
-            await channel.send(file=discord.File(img_full_path))
-            ###### send msg #####
+            await msgs_on_loop_channel.send(file=discord.File(img_full_path))
+            await asyncio.sleep(60)
+
+        # send a lunchtime reminder msg at 12:00pm
+        if hr_min_secs[0] == '12' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat lunch!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+            await asyncio.sleep(60)
+
+        # send a you can do it msg at 3:00pm
+        if hr_min_secs[0] == '15' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} that his dream of '{MY_DREAM}' will come true!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+            await asyncio.sleep(60)
+
+        # send a dinnertime reminder msg at 7:00pm
+        if hr_min_secs[0] == '19' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat dinner!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+            await asyncio.sleep(60)
+
+        # send a get sleep reminder msg at 12:00am
+        if hr_min_secs[0] == '00' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to go to sleep!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
             await asyncio.sleep(60)
 
     @client.event
@@ -168,7 +188,7 @@ def run_discord_bot():
         When ready, load all looping functions if any.
         '''
         print(f'{client.user} running!')
-        once_a_day_msg.start()
+        msgs_on_loop.start()
 
     @client.event
     async def on_message(msg : discord.message.Message):
@@ -190,6 +210,7 @@ def run_discord_bot():
             return
 
         ############################## StableDiffusion ##############################
+
         if channel == STABLE_DIFFUSION_CHANNEL_NAME_1:
             await gen_stable_diffusion(msg, usr_msg, chnl_num=1)
             return
@@ -201,7 +222,10 @@ def run_discord_bot():
 
         # if sent in GPT_CHANNEL3, send back a GPT3 response
         if channel == GPT3_CHANNEL_NAME:
-            await gen_gpt3(msg, usr_msg)
+            # inject additional context for simple roleplay
+            if GPT3_SETTINGS["chatbot_roleplay"][0] == "T":
+                usr_msg = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} INPUT: {usr_msg} OUTPUT:"
+            await msg.channel.send(await gen_gpt3(usr_msg))
             return
 
         # show user current GPT3 settings
@@ -212,7 +236,12 @@ def run_discord_bot():
         # user wants to modify GPT3 settings
         if usr_msg[0:6] == "GPTSET":
             ''' expect format: GPTSET [setting_name] [new_value]'''
-            await gptset(msg, usr_msg)
+            try:
+                await gptset(usr_msg)
+                await msg.channel.send("New parameter saved, current settings:")
+                await gptsettings(msg)
+            except Exception as e:
+                await msg.channel.send("usage: GPTSET [setting_name] [new_value]")
             return
 
         ############################## Custom Commands ##############################
@@ -245,13 +274,12 @@ def run_discord_bot():
             return 
 
         # Python Calculator
-        # slightly danger zone where I'm running code...
         if usr_msg[0:5] == 'calc:':
             try:
                 tmp = usr_msg.split(":")
                 await msg.channel.send(eval(tmp[1]))
             except Exception as e:
-                await msg.channel.send("usage: calc: [math exp in python]")    
+                await msg.channel.send("usage: calc: [math exp in python]")
             return
 
         # Dice Roller
