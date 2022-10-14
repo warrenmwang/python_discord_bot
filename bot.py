@@ -3,11 +3,16 @@ from discord.ext import tasks
 import asyncio
 import random
 from datetime import datetime
-import responses
 import os
 import openai
 from dotenv import load_dotenv
 import subprocess
+
+# give calculator more advanced math capabilities
+import numpy as np
+
+# web scraping stuff
+import requests, bs4
 
 load_dotenv()
 
@@ -34,12 +39,15 @@ GPT3_SETTINGS = {
     "top_p": ["1.0", "float"],
     "frequency_penalty": ["0", "float"],
     "presence_penalty": ["0", "float"],
-    "chatbot_roleplay": ["F", "str"]
+    "chatbot_roleplay": ["T", "str"]
 }
 MY_NAME = os.getenv('MY_NAME')
 MY_DREAM = os.getenv('MY_DREAM')
+MY_CURRENT_LOCATION = os.getenv('MY_CURRENT_LOCATION')
 
-ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2]
+PERSONAL_ASSISTANT_CHANNEL = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
+
+ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2, PERSONAL_ASSISTANT_CHANNEL]
 
 ############################## STABLE DIFFUSION ##############################
 
@@ -83,7 +91,6 @@ async def gen_stable_diffusion(msg, usr_msg, chnl_num):
         except Exception as e:
             await msg.channel.send("something went wrong in cleanup procedure in stable diffusion")
 
-
 ############################## GPT 3 ##############################
 
 async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
@@ -122,9 +129,83 @@ async def gptset(usr_msg : str) -> None:
     setting, new_val = tmp[1], tmp[2]
     GPT3_SETTINGS[setting][0] = new_val # always gonna store str
 
+
+############################## Personal Assistant ##############################
+
+async def get_weather_data(location: str) -> str:
+    '''
+    input: location (str) -- website url with weather data at a location presearched
+    output: str with whatever formatting that will be sent as a message directly
+    '''
+    res = requests.get(location)
+    try:
+        res.raise_for_status
+    except Exception as e:
+        return "Request to website failed."
+    soup = bs4.BeautifulSoup(res.text, features="html.parser")
+    ret_str = soup.select(".myforecast-current-lrg")[0].getText()
+
+    return ret_str
+
+async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) -> None:
+    '''
+    Custom commands that do a particular hard-coded thing.
+    '''
+    # Reminders based on a time
+    if usr_msg[0:9].lower() == "remind me":
+        try:
+            tmp = list(map(str.strip, usr_msg.split(',')))
+            task, time, unit = tmp[1], float(tmp[2]), tmp[3]
+            if unit == "s":
+                remind_time = time
+            elif unit == "m":
+                remind_time = time * 60
+            elif unit == "h":
+                remind_time = time * 3600
+            else:
+                remind_time = -1
+                
+            if remind_time == -1:
+                # unclear units (maybe add days ?)
+                await msg.channel.send("only time units implemented: s, m, h")
+                return
+
+            await msg.channel.send("Reminder set.")
+            await asyncio.sleep(remind_time)
+            await msg.channel.send(f"REMINDER: {task}")
+        except Exception as e:
+            await msg.channel.send("usage: remind me, [task_description], [time], [unit]")
+        return
+
+    # Weather (location default get from env)
+    if usr_msg.lower() == "weather":
+        await msg.channel.send(await get_weather_data(MY_CURRENT_LOCATION))
+        return
+
+    # Calculator
+    if usr_msg[0:5].lower() == 'calc:':
+        try:
+            tmp = usr_msg.split(":")
+            await msg.channel.send(eval(tmp[1]))
+        except Exception as e:
+            await msg.channel.send("usage: calc: [math exp in python (available libraries include: numpy)]")
+        return
+
+    # Time
+    if usr_msg[0:5].lower() == 'time':
+        tmp = str(datetime.now()).split()
+        date, time_24_hr = tmp[0], tmp[1]
+        await msg.channel.send(f"Date: {date}\nTime 24H: {time_24_hr}")
+        return
+
+    await msg.channel.send("That was command found.")
+
 ############################## Main Function ##############################
 
 def run_discord_bot():
+    '''
+    Main loop
+    '''
     intents = discord.Intents.all()
     client = discord.Client(intents=intents)
 
@@ -219,12 +300,11 @@ def run_discord_bot():
             return
 
         ############################## GPT 3 ##############################
-
         # if sent in GPT_CHANNEL3, send back a GPT3 response
         if channel == GPT3_CHANNEL_NAME:
             # inject additional context for simple roleplay
             if GPT3_SETTINGS["chatbot_roleplay"][0] == "T":
-                usr_msg = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} INPUT: {usr_msg} OUTPUT:"
+                usr_msg = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} {MY_NAME}: {usr_msg} You:"
             await msg.channel.send(await gen_gpt3(usr_msg))
             return
 
@@ -244,55 +324,14 @@ def run_discord_bot():
                 await msg.channel.send("usage: GPTSET [setting_name] [new_value]")
             return
 
-        ############################## Custom Commands ##############################
-
-        # Reminders based on a time
-        if usr_msg[0:9].lower() == "remind me":
-            '''expecting form: remind me, [name/msg], [time], [unit] '''
-            try:
-                tmp = list(map(str.strip, usr_msg.split(',')))
-                task, time, unit = tmp[1], float(tmp[2]), tmp[3]
-                if unit == "s":
-                    remind_time = time
-                elif unit == "m":
-                    remind_time = time * 60
-                elif unit == "h":
-                    remind_time = time * 3600
-                else:
-                    remind_time = -1
-                    
-                if remind_time == -1:
-                    # unclear units (maybe add days ?)
-                    await msg.channel.send("only time units implemented: s, m, h")
-                    return
-
-                await msg.channel.send("Reminder set.")
-                await asyncio.sleep(remind_time)
-                await msg.channel.send(f"REMINDER: {task}")
-            except Exception as e:
-                await msg.channel.send("usage: remind me, [task_description], [time], [unit]")
-            return 
-
-        # Python Calculator
-        if usr_msg[0:5] == 'calc:':
-            try:
-                tmp = usr_msg.split(":")
-                await msg.channel.send(eval(tmp[1]))
-            except Exception as e:
-                await msg.channel.send("usage: calc: [math exp in python]")
+        ############################## Personal Assistant Channel ##############################
+        if channel == PERSONAL_ASSISTANT_CHANNEL:
+            await personal_assistant_block(msg, usr_msg)
             return
 
-        # Dice Roller
-        if usr_msg == "diceroll":
-            await msg.channel.send(str(random.randint(1, 6)))
-            return
+        ############################## Final Catch ##############################
+        if channel == MAIN_CHANNEL_NAME:
+            await msg.channel.send("I'm sorry, this channel is only for me now >:)")
 
-        ############################## For Hard Coded Response ##############################
-        # general message to be catched by handle_responses() -- hard coded responses
-        try:
-            response = responses.handle_response(usr_msg)
-            await msg.channel.send(response)
-        except Exception as e:
-            print(e)
 
     client.run(TOKEN)
