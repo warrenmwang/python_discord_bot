@@ -8,6 +8,8 @@ import openai
 from dotenv import load_dotenv
 import subprocess
 
+from gpt3_repl import answer_one_question
+
 # give calculator more advanced math capabilities
 import numpy as np
 
@@ -30,7 +32,10 @@ STABLE_DIFFUSION_ARGS_1 = os.getenv('STABLE_DIFFUSION_ARGS_1')
 STABLE_DIFFUSION_ARGS_2 = os.getenv('STABLE_DIFFUSION_ARGS_2')
 STABLE_DIFFUSION_OUTPUT_DIR = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
 
-openai.api_key = os.getenv('GPT3_OPENAI_API_KEY')
+# different api keys
+GPT3_OPENAI_API_KEY = os.getenv("GPT3_OPENAI_API_KEY")
+CODEX_OPENAI_API_KEY = os.getenv("CODEX_OPENAI_API_KEY")
+
 GPT3_CHANNEL_NAME = os.getenv('GPT3_CHANNEL_NAME')
 GPT3_SETTINGS = {
     "engine": ["text-davinci-002", "str"],
@@ -46,8 +51,10 @@ MY_DREAM = os.getenv('MY_DREAM')
 MY_CURRENT_LOCATION = os.getenv('MY_CURRENT_LOCATION')
 
 PERSONAL_ASSISTANT_CHANNEL = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
+GPT3_REPL_CHANNEL_NAME = os.getenv("GPT3_REPL_CHANNEL_NAME")
+GPT3_REPL_WORKING_PROMPT_FILENAME = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
 
-ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2, PERSONAL_ASSISTANT_CHANNEL]
+ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2, PERSONAL_ASSISTANT_CHANNEL, GPT3_REPL_CHANNEL_NAME]
 
 ############################## STABLE DIFFUSION ##############################
 
@@ -73,14 +80,19 @@ async def gen_stable_diffusion(msg, usr_msg, chnl_num):
         await msg.channel.send(f"StableDiffusion: got error on subprocess: {e}")
         return
 
-    # send image(s) back to user
+    # get generated image(s), if any
     imgs_to_send = []
     for file in os.listdir(STABLE_DIFFUSION_OUTPUT_DIR):
         file_path = os.path.join(STABLE_DIFFUSION_OUTPUT_DIR, file)
         if file_path[-4:] == ".png":
             imgs_to_send.append(file_path)
-    for img in imgs_to_send:
-        await msg.channel.send(file=discord.File(img))
+    # if no images were generated, send notify usr
+    if len(imgs_to_send) == 0:
+        await msg.channel.send(f"StableDiffusion: no images generated (probably CUDA out of memory)")
+    else:
+        # have images, send them
+        for img in imgs_to_send:
+            await msg.channel.send(file=discord.File(img))
 
     # delete all files in outputdir
     for file in os.listdir(STABLE_DIFFUSION_OUTPUT_DIR):
@@ -93,11 +105,26 @@ async def gen_stable_diffusion(msg, usr_msg, chnl_num):
 
 ############################## GPT 3 ##############################
 
+async def gen_gpt3_repl(usr_msg : str) -> str:
+    '''
+    receives a str prompt that should be passed into a gpt3 generation under the context
+    that GPT3 is serving as a repl that generates code if needed and provides an answer
+    '''
+    openai.api_key = CODEX_OPENAI_API_KEY
+    if (answer_one_question(usr_msg) == 1):
+        return "Likely aborted running Python code, or something went wrong"
+    with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "r") as f:
+        tmp = f.readlines()
+        answer = tmp[-1] # get answer (expect one line answers for now)
+    os.unlink(GPT3_REPL_WORKING_PROMPT_FILENAME) # cleanup by deleting the working prompt file
+    return answer
+
 async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
     '''
     retrieves a GPT3 response given a string input and a dictionary containing the settings to use
     returns the response str
     '''
+    openai.api_key = GPT3_OPENAI_API_KEY
     response = openai.Completion.create(
         engine = settings_dict["engine"][0],
         prompt = usr_msg,
@@ -183,6 +210,8 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         return
 
     # Calculator
+    # NOTE: this is dangerous if input is untrusted, can be used to run arbitrary python and shell code
+    # this is personal project, so I'm fine with this
     if usr_msg[0:5].lower() == 'calc:':
         try:
             tmp = usr_msg.split(":")
@@ -297,6 +326,15 @@ def run_discord_bot():
             return
         elif channel == STABLE_DIFFUSION_CHANNEL_NAME_2:
             await gen_stable_diffusion(msg, usr_msg, chnl_num=2)
+            return
+
+        ############################## GPT 3 REPL ##############################
+        # for now, this only works if terminal is open at the same time to confirm
+        # python script generated is ok to run, not going to automatically run
+        # generated code without double checking.
+        if channel == GPT3_REPL_CHANNEL_NAME:
+            await msg.channel.send(await gen_gpt3_repl(usr_msg))
+            # await msg.channel.send("there's probably no for sure way to make this safe")
             return
 
         ############################## GPT 3 ##############################
