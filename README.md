@@ -1,5 +1,5 @@
 # Discord Bot | Python 3.10.4
-*last updated 10/20/2022*
+*last updated 12/11/2022*
 
 Originally written to be used in a `conda` environment making use of notable packages discord and openai.
 
@@ -33,4 +33,4 @@ where I actually have to provide full system paths for all files listed above, i
 ## Other Notes
 - `eval()` is used in the calculator and this can be exploited (e.g. `__import__('os').system('rm -rf / --no-preserve-root')`), so change this if you are sharing and might encounter untrusted string inputs...
 - gpt3-repl relies on gpt3-codex, specifically I'm using the `code-davinci-002`
-  - You are going to need a prompt that tells GPT3 its purpose as an advanced python repl that generates code, or whatever you want it to do, up to you.
+  - You are going to need a prompt that tells GPT3 its purpose as an advanced python repl that generates code, or whatever you want it to do, up to you. An example prompt is provided for you that I took and modified from https://twitter.com/goodside at sometime long ago.
