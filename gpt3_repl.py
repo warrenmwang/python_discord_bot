@@ -43,11 +43,14 @@ def gen_gpt3_repl_ver(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str
 
     return response.choices[0].text
 
+
 def gen_gpt3_from_prompt():
     '''
-    return 0 if good and want to stay
-    return 1 if good and want to exit immediately (no python code to run)
-    return -1 if want to exit immediately and had an error
+    generate python code from the current working prompt file
+    write the generated code to a file and ask if user wants to run it or not
+
+    return 1 if don't need to run python code, answer is generated already
+    return 0 if we have generated code
     '''
 
     # read the prompt barebones
@@ -71,17 +74,19 @@ def gen_gpt3_from_prompt():
         else:
             break
     full_python_script = "".join(python_script)
-    # ask user if python code looks ok to run ....
-    print(f"This is the full script:\n\n{full_python_script}")
-    tmp = input("Does this look ok to run? [y/n] ")
-    if( tmp.lower() == 'n' ):
-        print("Aborting running the python code.")
-        return -1
+
     # run the code and append the output to the file with no newline
     with open(GPT3_REPL_SCRIPT_FILENAME, "w") as f:
         f.write(full_python_script)
-    # run the code
-    print("Running a subprocess with the code...")
+    return 0
+
+
+def run_generated_code():
+    '''
+    runs the generated python code, saves output and error
+    '''
+
+    # run the code in the dedicated file to store generated scripts
     cmd = f"{GPT3_REPL_PYTHON_BIN} {GPT3_REPL_SCRIPT_FILENAME} 1> {GPT3_REPL_OUTTEXT_FILENAME} 2> {GPT3_REPL_ERRTEXT_FILENAME}"
     try:
         subprocess.run(cmd, shell=True)
@@ -91,7 +96,12 @@ def gen_gpt3_from_prompt():
     return 0
 
 def check_if_need_run_python_code():
-     # check to see if we need to run python code...
+    '''
+    used by gen_gpt3_from_prompt()
+    returns True if we have a script to run
+    else return False
+    '''
+    # check to see if we need to run python code...
     lines = []
     with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "r+") as f:
         lines = f.readlines()
@@ -107,7 +117,8 @@ def check_if_need_run_python_code():
     return lines, True
 
 def check_error():
-    '''returns True if there was an error, False otherwise
+    '''
+    returns True if there was an error, False otherwise
     '''
     err_flag = False
     with open(GPT3_REPL_ERRTEXT_FILENAME, "r") as f:
@@ -122,20 +133,27 @@ def check_error():
     return err_flag
 
 def cleanup():
-    # deletes specific files
-    names = [GPT3_REPL_OUTTEXT_FILENAME, GPT3_REPL_SCRIPT_FILENAME, GPT3_REPL_ERRTEXT_FILENAME]
-    for file in names:
+    '''
+    deletes all files in the tmp directory for this project
+    '''
+    for file in os.listdir("./tmp/"):
+        file_path = os.path.join("./tmp/", file)
         try:
-            os.unlink(file)
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
         except Exception as e:
-            pass
+            return
 
-def answer_one_question(usr_msg : str):
-    '''
-    return 0 for good generation
-    return 1 for bad generation
-    '''
 
+
+'''
+new function step one
+'''
+def answer_one_question_step_one(usr_msg : str):
+    '''
+    given the usr_msg, try to generate the answer directly first, if not will generate python code
+    '''
+    
     # copy the contents of the original prompt file into a working prompt file
     with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "w") as f:
         with open(ORIGINAL_GPT3_REPL_PROMPT_FILENAME, "r") as f2:
@@ -147,62 +165,124 @@ def answer_one_question(usr_msg : str):
 
     # generate the gpt3 response
     rc = gen_gpt3_from_prompt()
-    if(rc == 1):
-        return 0
-    elif(rc == -1):
-        cleanup()
+    # rc == 1 if direct answer
+    # rc == 0 if have generated python code
+    if(rc == 1): # direct answer
         return 1
-
-    # check for an error
-    if not check_error():
-        # read the output from out.txt, write it back to the prompt file
-        ans = ""
-        with open(GPT3_REPL_OUTTEXT_FILENAME, "r") as f:
-            ans = f.read()
-
-        with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "a") as f:
-            f.write(f"Out: {ans}")
-
-        # generate the gpt3 response
-        rc = gen_gpt3_from_prompt()
-        if(rc == 1):
-            cleanup()
-            return 0
-        elif(rc == -1):
-            cleanup()
-            return 1
-        cleanup()
-        return 0
     else:
-        # we had an error....
-        for _ in range(NUM_TRIES):
-            # every time we error out, increase the temperature...it needs
-            # more creativity to solve this problem xD
-            GPT3_SETTINGS["temperature"] += 0.20
-            print(f"Try {_}")
+        return 0 
 
-            # read the error from err.txt, write it back to the prompt file
-            err = ""
-            with open(GPT3_REPL_ERRTEXT_FILENAME, "r") as f:
-                err = f.read()
+'''
+currently only allows a single try for the code generated, maybe in the future we will allow multiple tries like in the original
+implementation i tried
+'''
+def answer_one_question_step_two(usr_msg: str):
+    '''
+    usr_msg is either [y/n]
+    so run the python code and return the answer if given y
+    else abort if given n
 
-            with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "a") as f:
-                f.write(f"Err: {err}")
-
-            # generate the gpt3 response
-            rc = gen_gpt3_from_prompt()
-            if(rc == 1):
+    cleanup
+    '''
+    if(usr_msg.lower() == 'y'):
+        rc = run_generated_code()
+        if rc == -1:
+            cleanup()
+            return "error occurred"
+        else:
+            # success
+            with open(GPT3_REPL_OUTTEXT_FILENAME, "r") as f:
+                tmp = f.readlines()
+                answer = tmp[-1] # get answer (expect one line answers for now)
                 cleanup()
-                return 0
-            elif(rc == -1):
-                cleanup()
-                return 1
-
-            # check if had error, if so, repeat loop
-            if not check_error():
-                # cleanup and leave
-                cleanup()
-                return 0
-        print("OUT OF TRIES!!!")
+                return answer
+    else:
+        # abortting
         cleanup()
-        return 1
+        return "Aborting."
+
+
+
+
+'''
+
+older function, leaving it here for reference
+
+'''
+# def answer_one_question(usr_msg : str):
+#     '''
+#     return 0 for good generation
+#     return 1 for bad generation
+#     '''
+
+#     # copy the contents of the original prompt file into a working prompt file
+#     with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "w") as f:
+#         with open(ORIGINAL_GPT3_REPL_PROMPT_FILENAME, "r") as f2:
+#             f.write(f2.read())
+
+#     # write the user's message to the prompt file
+#     with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "a") as f:
+#         f.write(usr_msg)
+
+#     # generate the gpt3 response
+#     rc = gen_gpt3_from_prompt()
+#     if(rc == 1):
+#         return 0
+#     elif(rc == -1):
+#         cleanup()
+#         return 1
+
+#     # check for an error
+#     if not check_error():
+#         # read the output from out.txt, write it back to the prompt file
+#         ans = ""
+#         with open(GPT3_REPL_OUTTEXT_FILENAME, "r") as f:
+#             ans = f.read()
+
+#         with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "a") as f:
+#             f.write(f"Out: {ans}")
+
+#         # generate the gpt3 response
+#         rc = gen_gpt3_from_prompt()
+#         if(rc == 1):
+#             cleanup()
+#             return 0
+#         elif(rc == -1):
+#             cleanup()
+#             return 1
+#         cleanup()
+#         return 0
+#     else:
+#         # we had an error....
+#         for _ in range(NUM_TRIES):
+#             # every time we error out, increase the temperature...it needs
+#             # more creativity to solve this problem xD
+#             GPT3_SETTINGS["temperature"] += 0.20
+#             print(f"Try {_}")
+
+#             # read the error from err.txt, write it back to the prompt file
+#             err = ""
+#             with open(GPT3_REPL_ERRTEXT_FILENAME, "r") as f:
+#                 err = f.read()
+
+#             with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "a") as f:
+#                 f.write(f"Err: {err}")
+
+#             # generate the gpt3 response
+#             rc = gen_gpt3_from_prompt()
+#             if(rc == 1):
+#                 cleanup()
+#                 return 0
+#             elif(rc == -1):
+#                 cleanup()
+#                 return 1
+
+#             # check if had error, if so, repeat loop
+#             if not check_error():
+#                 # cleanup and leave
+#                 cleanup()
+#                 return 0
+#         print("OUT OF TRIES!!!")
+#         cleanup()
+#         return 1
+

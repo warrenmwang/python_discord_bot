@@ -7,8 +7,9 @@ import os
 import openai
 from dotenv import load_dotenv
 import subprocess
+import urllib.request
 
-from gpt3_repl import answer_one_question
+from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two
 
 # give calculator more advanced math capabilities
 import numpy as np
@@ -20,9 +21,7 @@ load_dotenv()
 
 ############################## GLOBAL VARS ##############################
 TOKEN = os.getenv('DISCORD_TOKEN')
-MAIN_CHANNEL_ID = int(os.getenv('MAIN_CHANNEL_ID'))
 PHOTOS_DIR = os.getenv('PHOTOS_DIR')
-MAIN_CHANNEL_NAME = os.getenv('MAIN_CHANNEL_NAME')
 
 STABLE_DIFFUSION_CHANNEL_NAME_1 = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME_1')
 STABLE_DIFFUSION_CHANNEL_NAME_2 = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME_2')
@@ -32,29 +31,37 @@ STABLE_DIFFUSION_ARGS_1 = os.getenv('STABLE_DIFFUSION_ARGS_1')
 STABLE_DIFFUSION_ARGS_2 = os.getenv('STABLE_DIFFUSION_ARGS_2')
 STABLE_DIFFUSION_OUTPUT_DIR = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
 
+MY_NAME = os.getenv('MY_NAME')
+MY_DREAM = os.getenv('MY_DREAM')
+MY_CURRENT_LOCATION = os.getenv('MY_CURRENT_LOCATION')
+
 # different api keys
 GPT3_OPENAI_API_KEY = os.getenv("GPT3_OPENAI_API_KEY")
 CODEX_OPENAI_API_KEY = os.getenv("CODEX_OPENAI_API_KEY")
 
 GPT3_CHANNEL_NAME = os.getenv('GPT3_CHANNEL_NAME')
+GPT3_CHANNEL_ID = os.getenv('GPT3_CHANNEL_ID')
 GPT3_SETTINGS = {
     "engine": ["text-davinci-002", "str"],
     "temperature": ["0.7", "float"],
-    "max_tokens": ["100", "int"],
+    "max_tokens": ["2000", "int"],
     "top_p": ["1.0", "float"],
     "frequency_penalty": ["0", "float"],
     "presence_penalty": ["0", "float"],
-    "chatbot_roleplay": ["T", "str"]
+    "chatbot_roleplay": ["T", "str"],
+    "stop" : [["\n\nINPUT:"], "list of strings"]
 }
-MY_NAME = os.getenv('MY_NAME')
-MY_DREAM = os.getenv('MY_DREAM')
-MY_CURRENT_LOCATION = os.getenv('MY_CURRENT_LOCATION')
+
 
 PERSONAL_ASSISTANT_CHANNEL = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
 GPT3_REPL_CHANNEL_NAME = os.getenv("GPT3_REPL_CHANNEL_NAME")
 GPT3_REPL_WORKING_PROMPT_FILENAME = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
+GPT3_REPL_WAITING_ON_CODE_CONFIRMATION = False
+GPT3_REPL_SCRIPT_FILENAME = os.getenv("GPT3_REPL_SCRIPT_FILENAME")
+CURR_CONVO_CONTEXT = str(os.getenv('GPT3_ROLEPLAY_CONTEXT')) # init it with the beginning roleplay info
+CURR_CONVO_CONTEXT_LEN_MAX = int(GPT3_SETTINGS["max_tokens"][0]) * 2 # init w/ double max_tokens length
 
-ALLOWED_CHANNELS = [MAIN_CHANNEL_NAME, GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2, PERSONAL_ASSISTANT_CHANNEL, GPT3_REPL_CHANNEL_NAME]
+ALLOWED_CHANNELS = [GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2, PERSONAL_ASSISTANT_CHANNEL, GPT3_REPL_CHANNEL_NAME]
 
 ############################## STABLE DIFFUSION ##############################
 
@@ -105,19 +112,44 @@ async def gen_stable_diffusion(msg, usr_msg, chnl_num):
 
 ############################## GPT 3 ##############################
 
-async def gen_gpt3_repl(usr_msg : str) -> str:
+async def gen_gpt3_repl_step_one(usr_msg : str) -> str:
     '''
+    1. try to answer the question immediately
+    2. if cannot, then generate python code and send that to user
+    3. then need to await confirmation to run the code or not (go to step 2 function)
+
+
     receives a str prompt that should be passed into a gpt3 generation under the context
     that GPT3 is serving as a repl that generates code if needed and provides an answer
     '''
     openai.api_key = CODEX_OPENAI_API_KEY
-    if (answer_one_question(usr_msg) == 1):
-        return "Likely aborted running Python code, or something went wrong"
-    with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "r") as f:
-        tmp = f.readlines()
-        answer = tmp[-1] # get answer (expect one line answers for now)
-    os.unlink(GPT3_REPL_WORKING_PROMPT_FILENAME) # cleanup by deleting the working prompt file
-    return answer
+    if (answer_one_question_step_one(usr_msg) == 1):
+        # direct answer is available
+        with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "r") as f:
+            tmp = f.readlines()
+            answer = tmp[-1] # get answer (expect one line answers for now)
+        os.unlink(GPT3_REPL_WORKING_PROMPT_FILENAME) # cleanup by deleting the working prompt file
+        return answer
+    else:
+        # show to user the python script generated, ask for confirmation before running code
+        ret_str = f"This is the full script:\n==========\n"
+        with open(GPT3_REPL_SCRIPT_FILENAME, "r") as f:
+            ret_str += f.read()
+        ret_str += "==========\nDoes this look ok to run? [y/n]"
+        return ret_str
+
+async def gen_gpt3_repl_step_two(usr_msg: str) -> str:
+    '''
+    usr_msg should be either [y/n]
+
+    if y run python script and return the answer
+    if n abort and cleanup
+
+    give all this work to the func
+    '''
+    ret_str = answer_one_question_step_two(usr_msg)
+    return ret_str
+
 
 async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
     '''
@@ -132,7 +164,8 @@ async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
                 max_tokens = int(settings_dict["max_tokens"][0]),
                 top_p = float(settings_dict["top_p"][0]),
                 frequency_penalty = float(settings_dict["frequency_penalty"][0]),
-                presence_penalty = float(settings_dict["presence_penalty"][0])
+                presence_penalty = float(settings_dict["presence_penalty"][0]),
+                stop = settings_dict["stop"][0]
     )
     return response.choices[0].text
 
@@ -156,6 +189,10 @@ async def gptset(usr_msg : str) -> None:
     setting, new_val = tmp[1], tmp[2]
     GPT3_SETTINGS[setting][0] = new_val # always gonna store str
 
+async def gpt_context_reset() -> None:
+    global CURR_CONVO_CONTEXT
+    CURR_CONVO_CONTEXT = str(os.getenv('GPT3_ROLEPLAY_CONTEXT'))
+
 
 ############################## Personal Assistant ##############################
 
@@ -171,13 +208,91 @@ async def get_weather_data(location: str) -> str:
         return "Request to website failed."
     soup = bs4.BeautifulSoup(res.text, features="html.parser")
     ret_str = soup.select(".myforecast-current-lrg")[0].getText()
-
     return ret_str
 
 async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) -> None:
     '''
     Custom commands that do a particular hard-coded thing.
     '''
+    global CURR_CONVO_CONTEXT_LEN_MAX
+
+    # list all the commands available
+    if usr_msg.lower() == "help":
+        help_str = \
+        "List of available commands:\n\
+        help: show this message\n\
+        ip: show ip of computer running this bot\n\
+        weather: show weather at location of computer\n\
+        calc: use python eval() function\n\
+        remind me: reminders\n\
+        time: print time\n\
+        convo len: show current gpt3 context length\n\
+        convo max len: show current max convo len\n\
+        change convo max len, [new_len]: change convo max len to new_len\n\
+        reset thread: reset gpt3 context length\n\
+        show thread: show the entire current convo context\n\
+        gptsettings: show the current gpt3 settings\n\
+        gptset [setting_name] [new_value]: modify gpt3 settings\n\
+        "
+        await msg.channel.send(help_str)
+        return
+    
+    # show user current GPT3 settings
+    if usr_msg.lower() == "gptsettings":
+        await gptsettings(msg)
+        return
+
+    # user wants to modify GPT3 settings
+    if usr_msg[0:6].lower() == "gptset":
+        ''' expect format: gptset [setting_name] [new_value]'''
+        try:
+            await gptset(usr_msg)
+            await msg.channel.send("New parameter saved, current settings:")
+            await gptsettings(msg)
+        except Exception as e:
+            await msg.channel.send("gptset: gptset [setting_name] [new_value]")
+        return
+    
+    # show the current thread
+    if usr_msg.lower() == "show thread":
+        # discord caps at 2000 chars per message body
+        x = CURR_CONVO_CONTEXT[-2000:] if len(CURR_CONVO_CONTEXT) > 2000 else CURR_CONVO_CONTEXT
+        await msg.channel.send(x)
+        return
+
+    # reset convo context (something like reset thread)
+    if usr_msg.lower() == "reset thread":
+        await gpt_context_reset()
+        await msg.channel.send(f"Thread Reset. Starting with (prompt) convo len = {len(CURR_CONVO_CONTEXT)}")
+        return
+    
+    # max convo len
+    if usr_msg.lower() == "convo max len":
+        await msg.channel.send(CURR_CONVO_CONTEXT_LEN_MAX) 
+        return
+
+    # idk if im going to use this function, but I'm going to write it
+    if usr_msg.lower()[:20] == "change convo max len":
+        try:
+            tmp = list(map(str.strip, usr_msg.split(',')))
+            tmp1 = tmp[1]
+            CURR_CONVO_CONTEXT_LEN_MAX = int(tmp1) 
+            await msg.channel.send(f"New convo max len = {CURR_CONVO_CONTEXT_LEN_MAX}")
+            return
+        except Exception as e:
+            await msg.channel.send("usage: change convo max len, [new_len]")
+            return
+        
+    # check curr convo context length
+    if usr_msg.lower() == "convo len":
+        await msg.channel.send(len(CURR_CONVO_CONTEXT))
+        return
+
+	# return the current computer ip addr
+    if usr_msg.lower() == "ip":
+        await msg.channel.send(urllib.request.urlopen('https://ident.me').read().decode('utf8'))
+        return
+
     # Reminders based on a time
     if usr_msg[0:9].lower() == "remind me":
         try:
@@ -227,7 +342,7 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         await msg.channel.send(f"Date: {date}\nTime 24H: {time_24_hr}")
         return
 
-    await msg.channel.send("That was command found.")
+    await msg.channel.send("That command was not found.")
 
 ############################## Main Function ##############################
 
@@ -241,7 +356,7 @@ def run_discord_bot():
     @tasks.loop(seconds = 30)
     async def msgs_on_loop():
         hr_min_secs = str(datetime.now()).split()[1].split(':')
-        msgs_on_loop_channel = client.get_channel(MAIN_CHANNEL_ID)
+        msgs_on_loop_channel = client.get_channel(int(GPT3_CHANNEL_ID))
         msgs_on_loop_gpt_settings = {
                 "engine": ["text-davinci-002", "str"],
                 "temperature": ["0.7", "float"],
@@ -249,23 +364,17 @@ def run_discord_bot():
                 "top_p": ["1.0", "float"],
                 "frequency_penalty": ["0", "float"],
                 "presence_penalty": ["0", "float"],
+                "stop": [["INPUT:"], "list of strings"] # not used here, but need for function
             }
 
         # send a good morning msg at 7:00am
-        quotes = []
-        with open("quotes.txt", "r") as f:
-            lines = f.readlines()
-            for line in lines:
-                if line == "": continue
-                quotes.append(line)
-        daily_msg = quotes[-1] # daily_msg is final line in quotes.txt, save then remove
-        quotes = quotes[:-1]
         if hr_min_secs[0] == '07' and hr_min_secs[1] == '00':
-            msg = f"{daily_msg}\n\n{random.choice(quotes)}"
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You generate an inspirational quote for {MY_NAME}:"
+            msg = await gen_gpt3(prompt, msgs_on_loop_gpt_settings)
             await msgs_on_loop_channel.send(msg)
-            img_name = random.choice(os.listdir(PHOTOS_DIR))
-            img_full_path = f"{PHOTOS_DIR}/{img_name}"
-            await msgs_on_loop_channel.send(file=discord.File(img_full_path))
+            #img_name = random.choice(os.listdir(PHOTOS_DIR))
+            #img_full_path = f"{PHOTOS_DIR}/{img_name}"
+            #await msgs_on_loop_channel.send(file=discord.File(img_full_path))
             await asyncio.sleep(60)
 
         # send a lunchtime reminder msg at 12:00pm
@@ -319,22 +428,36 @@ def run_discord_bot():
         if channel not in ALLOWED_CHANNELS:
             return
 
+        ############################## Personal Assistant Channel ##############################
+        if channel == PERSONAL_ASSISTANT_CHANNEL:
+            await personal_assistant_block(msg, usr_msg)
+            return
+
         ############################## StableDiffusion ##############################
 
+        # enable stablediffusion if you have a gpu (i switched to run this bot on a comp without one for now...)
         if channel == STABLE_DIFFUSION_CHANNEL_NAME_1:
-            await gen_stable_diffusion(msg, usr_msg, chnl_num=1)
+            await msg.channel.send("stablediffusion disabled")
+            #await gen_stable_diffusion(msg, usr_msg, chnl_num=1)
             return
         elif channel == STABLE_DIFFUSION_CHANNEL_NAME_2:
-            await gen_stable_diffusion(msg, usr_msg, chnl_num=2)
+            await msg.channel.send("stablediffusion disabled")
+            #await gen_stable_diffusion(msg, usr_msg, chnl_num=2)
             return
 
         ############################## GPT 3 REPL ##############################
-        # for now, this only works if terminal is open at the same time to confirm
-        # python script generated is ok to run, not going to automatically run
-        # generated code without double checking.
+        # enabled! confirmation is done through the same channel
+        global GPT3_REPL_WAITING_ON_CODE_CONFIRMATION
         if channel == GPT3_REPL_CHANNEL_NAME:
-            await msg.channel.send(await gen_gpt3_repl(usr_msg))
-            # await msg.channel.send("there's probably no for sure way to make this safe")
+            if GPT3_REPL_WAITING_ON_CODE_CONFIRMATION == False:
+                GPT3_REPL_WAITING_ON_CODE_CONFIRMATION = True
+                # show user the code that was generated, want confirmation to run or not
+                await msg.channel.send(await gen_gpt3_repl_step_one(usr_msg))
+            else:
+                # we were waiting for code to be run
+                GPT3_REPL_WAITING_ON_CODE_CONFIRMATION = False
+                # take user input and respond appropriately
+                await msg.channel.send(await gen_gpt3_repl_step_two(usr_msg))
             return
 
         ############################## GPT 3 ##############################
@@ -342,34 +465,20 @@ def run_discord_bot():
         if channel == GPT3_CHANNEL_NAME:
             # inject additional context for simple roleplay
             if GPT3_SETTINGS["chatbot_roleplay"][0] == "T":
-                usr_msg = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} {MY_NAME}: {usr_msg} You:"
-            await msg.channel.send(await gen_gpt3(usr_msg))
+                global CURR_CONVO_CONTEXT
+                global CURR_CONVO_CONTEXT_LEN_MAX
+                # remove half of oldest convo context if too long, then append the new usg_msg
+                if len(CURR_CONVO_CONTEXT) > CURR_CONVO_CONTEXT_LEN_MAX:
+                    CURR_CONVO_CONTEXT = CURR_CONVO_CONTEXT[len(CURR_CONVO_CONTEXT)//2 : ]
+                    CURR_CONVO_CONTEXT = f"{CURR_CONVO_CONTEXT}\n\nINPUT:{usr_msg}\n\nOUTPUT:"
+                # else keep adding current convo to the current context
+                else:
+                    CURR_CONVO_CONTEXT += f"\n\nINPUT:{usr_msg}\n\nOUTPUT:"
+                
+                gpt_response = await gen_gpt3(CURR_CONVO_CONTEXT)
+                CURR_CONVO_CONTEXT += gpt_response
+
+            await msg.channel.send(gpt_response)
             return
-
-        # show user current GPT3 settings
-        if usr_msg == "GPTSETTINGS":
-            await gptsettings(msg)
-            return
-
-        # user wants to modify GPT3 settings
-        if usr_msg[0:6] == "GPTSET":
-            ''' expect format: GPTSET [setting_name] [new_value]'''
-            try:
-                await gptset(usr_msg)
-                await msg.channel.send("New parameter saved, current settings:")
-                await gptsettings(msg)
-            except Exception as e:
-                await msg.channel.send("usage: GPTSET [setting_name] [new_value]")
-            return
-
-        ############################## Personal Assistant Channel ##############################
-        if channel == PERSONAL_ASSISTANT_CHANNEL:
-            await personal_assistant_block(msg, usr_msg)
-            return
-
-        ############################## Final Catch ##############################
-        if channel == MAIN_CHANNEL_NAME:
-            await msg.channel.send("I'm sorry, this channel is only for me now >:)")
-
 
     client.run(TOKEN)
