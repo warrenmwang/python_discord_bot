@@ -1,5 +1,5 @@
 # Discord Bot | Python 3.10.4
-*last updated 12/11/2022*
+*last updated 12/12/2022*
 
 Originally written to be used in a `conda` environment making use of notable packages discord and openai.
 

@@ -15,34 +15,33 @@ GPT3_REPL_OUTTEXT_FILENAME = os.getenv("GPT3_REPL_OUTTEXT_FILENAME")
 GPT3_REPL_ERRTEXT_FILENAME = os.getenv("GPT3_REPL_ERRTEXT_FILENAME")
 
 # settings for writing python script
-GPT3_SETTINGS = { 
-    "engine": "code-davinci-002",
-    "temperature": 0.0,
-    "max_tokens": 500,
-    "top_p": 1.0,
-    "frequency_penalty": 0.0,
-    "presence_penalty": 0.0,
-    "stop": ["Question:", "Out:", "Err:" ,"STOP"]
+GPT3_REPL_SETTINGS = { 
+    "engine": ["code-davinci-002","str"],
+    "temperature": ["0.0","float"],
+    "max_tokens": ["500","int"],
+    "top_p": ["1.0","float"],
+    "frequency_penalty": ["0.0", "float"],
+    "presence_penalty": ["0.0", "float"],
+    "stop": [["Question:", "Out:", "Err:" ,"STOP"], 'list of str']
 }
 
-def gen_gpt3_repl_ver(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
+
+def gen_gpt3_repl_ver(usr_msg : str, settings_dict: dict = GPT3_REPL_SETTINGS) -> str:
     '''
     retrieves a GPT3 response given a string input and a dictionary containing the settings to use
     returns the response str
     '''
     response = openai.Completion.create(
-        engine = settings_dict["engine"],
+        engine = settings_dict["engine"][0],
         prompt = usr_msg,
-                temperature = settings_dict["temperature"],
-                max_tokens = settings_dict["max_tokens"],
-                top_p = settings_dict["top_p"],
-                frequency_penalty = settings_dict["frequency_penalty"],
-                presence_penalty = settings_dict["presence_penalty"],
-                stop = settings_dict["stop"]
+        temperature = float(settings_dict["temperature"][0]),
+        max_tokens = int(settings_dict["max_tokens"][0]),
+        top_p = float(settings_dict["top_p"][0]),
+        frequency_penalty = float(settings_dict["frequency_penalty"][0]),
+        presence_penalty = float(settings_dict["presence_penalty"][0]),
+        stop = settings_dict["stop"][0]
     )
-
     return response.choices[0].text
-
 
 def gen_gpt3_from_prompt():
     '''
@@ -57,7 +56,7 @@ def gen_gpt3_from_prompt():
     with open(GPT3_REPL_WORKING_PROMPT_FILENAME, "r+") as f:
         prompt = f.read()
         response = gen_gpt3_repl_ver(prompt)
-        f.write(response)
+        f.write(response) 
 
     # check to see if we need to run python code...
     lines, status = check_if_need_run_python_code()
@@ -143,7 +142,6 @@ def cleanup():
                 os.unlink(file_path)
         except Exception as e:
             return
-
 
 
 '''

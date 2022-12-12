@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 import subprocess
 import urllib.request
 
-from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two
+from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two, GPT3_REPL_SETTINGS
 
 # give calculator more advanced math capabilities
 import numpy as np
@@ -42,8 +42,8 @@ CODEX_OPENAI_API_KEY = os.getenv("CODEX_OPENAI_API_KEY")
 GPT3_CHANNEL_NAME = os.getenv('GPT3_CHANNEL_NAME')
 GPT3_CHANNEL_ID = os.getenv('GPT3_CHANNEL_ID')
 GPT3_SETTINGS = {
-    "engine": ["text-davinci-002", "str"],
-    "temperature": ["0.7", "float"],
+    "engine": ["text-davinci-003", "str"],
+    "temperature": ["0.0", "float"],
     "max_tokens": ["2000", "int"],
     "top_p": ["1.0", "float"],
     "frequency_penalty": ["0", "float"],
@@ -52,7 +52,7 @@ GPT3_SETTINGS = {
     "stop" : [["\n\nINPUT:"], "list of strings"]
 }
 
-
+DAILY_REMINDERS_SWITCH = True
 PERSONAL_ASSISTANT_CHANNEL = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
 GPT3_REPL_CHANNEL_NAME = os.getenv("GPT3_REPL_CHANNEL_NAME")
 GPT3_REPL_WORKING_PROMPT_FILENAME = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
@@ -160,25 +160,22 @@ async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
     response = openai.Completion.create(
         engine = settings_dict["engine"][0],
         prompt = usr_msg,
-                temperature = float(settings_dict["temperature"][0]),
-                max_tokens = int(settings_dict["max_tokens"][0]),
-                top_p = float(settings_dict["top_p"][0]),
-                frequency_penalty = float(settings_dict["frequency_penalty"][0]),
-                presence_penalty = float(settings_dict["presence_penalty"][0]),
-                stop = settings_dict["stop"][0]
+        temperature = float(settings_dict["temperature"][0]),
+        max_tokens = int(settings_dict["max_tokens"][0]),
+        top_p = float(settings_dict["top_p"][0]),
+        frequency_penalty = float(settings_dict["frequency_penalty"][0]),
+        presence_penalty = float(settings_dict["presence_penalty"][0]),
+        stop = settings_dict["stop"][0]
     )
     return response.choices[0].text
 
-async def gptsettings(msg : discord.message.Message) -> None:
+async def gptsettings(msg : discord.message.Message, GPT3_SETTINGS : dict) -> None:
     '''
-    original call is:
-        GPTSETTINGS
-
     prints out all available gpt3 settings, their current values, and their data types
     '''
     await msg.channel.send("".join([f"{key} ({GPT3_SETTINGS[key][1]}) = {GPT3_SETTINGS[key][0]}\n" for key in GPT3_SETTINGS.keys()]))
 
-async def gptset(usr_msg : str) -> None:
+async def gptset(usr_msg : str, GPT3_SETTINGS : dict) -> None:
     '''
     original call is:
         GPTSET [setting_name] [new_value]
@@ -215,9 +212,12 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
     Custom commands that do a particular hard-coded thing.
     '''
     global CURR_CONVO_CONTEXT_LEN_MAX
+    global DAILY_REMINDERS_SWITCH
+
+    usr_msg = usr_msg.lower()
 
     # list all the commands available
-    if usr_msg.lower() == "help":
+    if usr_msg == "help":
         help_str = \
         "List of available commands:\n\
         help: show this message\n\
@@ -226,53 +226,83 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         calc: use python eval() function\n\
         remind me: reminders\n\
         time: print time\n\
+        daily reminders: show current status of daily reminders\n\
+        daily reminders toggle: toggle the daily reminders\n\nGPT Settings:\n\n\
         convo len: show current gpt3 context length\n\
         convo max len: show current max convo len\n\
         change convo max len, [new_len]: change convo max len to new_len\n\
         reset thread: reset gpt3 context length\n\
         show thread: show the entire current convo context\n\
         gptsettings: show the current gpt3 settings\n\
+        gptreplsettings: show gpt3 repl settings\n\
         gptset [setting_name] [new_value]: modify gpt3 settings\n\
+        gptreplset [setting_name] [new_value]: modify gpt3 repl settings\n\
         "
         await msg.channel.send(help_str)
         return
-    
+
+    if usr_msg == "daily reminders":
+        x = "ON" if DAILY_REMINDERS_SWITCH else "OFF"
+        await msg.channel.send(x)
+        return
+
+    if usr_msg == "daily reminders toggle":
+        DAILY_REMINDERS_SWITCH = False if DAILY_REMINDERS_SWITCH else True
+        await msg.channel.send(f"Set to: {'ON' if DAILY_REMINDERS_SWITCH else 'OFF'}")
+        return
+
+    # gpt3 repl settings
+    if usr_msg == "gptreplsettings":
+        await gptsettings(msg, GPT3_REPL_SETTINGS)
+        return
+
     # show user current GPT3 settings
-    if usr_msg.lower() == "gptsettings":
-        await gptsettings(msg)
+    if usr_msg == "gptsettings":
+        await gptsettings(msg, GPT3_SETTINGS)
         return
 
     # user wants to modify GPT3 settings
-    if usr_msg[0:6].lower() == "gptset":
+    if usr_msg[0:6] == "gptset":
         ''' expect format: gptset [setting_name] [new_value]'''
         try:
-            await gptset(usr_msg)
+            await gptset(usr_msg, GPT3_SETTINGS)
             await msg.channel.send("New parameter saved, current settings:")
-            await gptsettings(msg)
+            await gptsettings(msg, GPT3_SETTINGS)
+        except Exception as e:
+            await msg.channel.send("gptset: gptset [setting_name] [new_value]")
+        return
+    
+    # modify GPT3repl settings
+    if usr_msg[:10] == "gptreplset":
+        ''' expect format: gptreplset [setting_name] [new_value]'''
+        try:
+            await gptset(usr_msg, GPT3_REPL_SETTINGS)
+            await msg.channel.send("New parameter saved, current settings:")
+            await gptsettings(msg, GPT3_REPL_SETTINGS)
         except Exception as e:
             await msg.channel.send("gptset: gptset [setting_name] [new_value]")
         return
     
     # show the current thread
-    if usr_msg.lower() == "show thread":
+    if usr_msg == "show thread":
         # discord caps at 2000 chars per message body
         x = CURR_CONVO_CONTEXT[-2000:] if len(CURR_CONVO_CONTEXT) > 2000 else CURR_CONVO_CONTEXT
         await msg.channel.send(x)
         return
 
     # reset convo context (something like reset thread)
-    if usr_msg.lower() == "reset thread":
+    if usr_msg == "reset thread":
         await gpt_context_reset()
         await msg.channel.send(f"Thread Reset. Starting with (prompt) convo len = {len(CURR_CONVO_CONTEXT)}")
         return
     
     # max convo len
-    if usr_msg.lower() == "convo max len":
+    if usr_msg == "convo max len":
         await msg.channel.send(CURR_CONVO_CONTEXT_LEN_MAX) 
         return
 
     # idk if im going to use this function, but I'm going to write it
-    if usr_msg.lower()[:20] == "change convo max len":
+    if usr_msg[:20] == "change convo max len":
         try:
             tmp = list(map(str.strip, usr_msg.split(',')))
             tmp1 = tmp[1]
@@ -284,17 +314,17 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
             return
         
     # check curr convo context length
-    if usr_msg.lower() == "convo len":
+    if usr_msg == "convo len":
         await msg.channel.send(len(CURR_CONVO_CONTEXT))
         return
 
 	# return the current computer ip addr
-    if usr_msg.lower() == "ip":
+    if usr_msg == "ip":
         await msg.channel.send(urllib.request.urlopen('https://ident.me').read().decode('utf8'))
         return
 
     # Reminders based on a time
-    if usr_msg[0:9].lower() == "remind me":
+    if usr_msg[0:9] == "remind me":
         try:
             tmp = list(map(str.strip, usr_msg.split(',')))
             task, time, unit = tmp[1], float(tmp[2]), tmp[3]
@@ -320,14 +350,14 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         return
 
     # Weather (location default get from env)
-    if usr_msg.lower() == "weather":
+    if usr_msg == "weather":
         await msg.channel.send(await get_weather_data(MY_CURRENT_LOCATION))
         return
 
     # Calculator
     # NOTE: this is dangerous if input is untrusted, can be used to run arbitrary python and shell code
     # this is personal project, so I'm fine with this
-    if usr_msg[0:5].lower() == 'calc:':
+    if usr_msg[0:5] == 'calc:':
         try:
             tmp = usr_msg.split(":")
             await msg.channel.send(eval(tmp[1]))
@@ -336,7 +366,7 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         return
 
     # Time
-    if usr_msg[0:5].lower() == 'time':
+    if usr_msg[0:5] == 'time':
         tmp = str(datetime.now()).split()
         date, time_24_hr = tmp[0], tmp[1]
         await msg.channel.send(f"Date: {date}\nTime 24H: {time_24_hr}")
@@ -352,54 +382,56 @@ def run_discord_bot():
     '''
     intents = discord.Intents.all()
     client = discord.Client(intents=intents)
+    global DAILY_REMINDERS_SWITCH
 
     @tasks.loop(seconds = 30)
     async def msgs_on_loop():
-        hr_min_secs = str(datetime.now()).split()[1].split(':')
-        msgs_on_loop_channel = client.get_channel(int(GPT3_CHANNEL_ID))
-        msgs_on_loop_gpt_settings = {
-                "engine": ["text-davinci-002", "str"],
-                "temperature": ["0.7", "float"],
-                "max_tokens": ["200", "int"],
-                "top_p": ["1.0", "float"],
-                "frequency_penalty": ["0", "float"],
-                "presence_penalty": ["0", "float"],
-                "stop": [["INPUT:"], "list of strings"] # not used here, but need for function
-            }
+        if DAILY_REMINDERS_SWITCH:
+            hr_min_secs = str(datetime.now()).split()[1].split(':')
+            msgs_on_loop_channel = client.get_channel(int(GPT3_CHANNEL_ID))
+            msgs_on_loop_gpt_settings = {
+                    "engine": ["text-davinci-002", "str"],
+                    "temperature": ["0.7", "float"],
+                    "max_tokens": ["200", "int"],
+                    "top_p": ["1.0", "float"],
+                    "frequency_penalty": ["0", "float"],
+                    "presence_penalty": ["0", "float"],
+                    "stop": [["INPUT:"], "list of strings"] # not used here, but need for function
+                }
 
-        # send a good morning msg at 7:00am
-        if hr_min_secs[0] == '07' and hr_min_secs[1] == '00':
-            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You generate an inspirational quote for {MY_NAME}:"
-            msg = await gen_gpt3(prompt, msgs_on_loop_gpt_settings)
-            await msgs_on_loop_channel.send(msg)
-            #img_name = random.choice(os.listdir(PHOTOS_DIR))
-            #img_full_path = f"{PHOTOS_DIR}/{img_name}"
-            #await msgs_on_loop_channel.send(file=discord.File(img_full_path))
-            await asyncio.sleep(60)
+            # send a good morning msg at 7:00am
+            if hr_min_secs[0] == '07' and hr_min_secs[1] == '00':
+                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You generate an inspirational quote for {MY_NAME}:"
+                msg = await gen_gpt3(prompt, msgs_on_loop_gpt_settings)
+                await msgs_on_loop_channel.send(msg)
+                #img_name = random.choice(os.listdir(PHOTOS_DIR))
+                #img_full_path = f"{PHOTOS_DIR}/{img_name}"
+                #await msgs_on_loop_channel.send(file=discord.File(img_full_path))
+                await asyncio.sleep(60)
 
-        # send a lunchtime reminder msg at 12:00pm
-        if hr_min_secs[0] == '12' and hr_min_secs[1] == '00':
-            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat lunch!:"
-            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-            await asyncio.sleep(60)
+            # send a lunchtime reminder msg at 12:00pm
+            if hr_min_secs[0] == '12' and hr_min_secs[1] == '00':
+                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat lunch!:"
+                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+                await asyncio.sleep(60)
 
-        # send a you can do it msg at 3:00pm
-        if hr_min_secs[0] == '15' and hr_min_secs[1] == '00':
-            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} that his dream of '{MY_DREAM}' will come true!:"
-            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-            await asyncio.sleep(60)
+            # send a you can do it msg at 3:00pm
+            if hr_min_secs[0] == '15' and hr_min_secs[1] == '00':
+                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} that his dream of '{MY_DREAM}' will come true!:"
+                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+                await asyncio.sleep(60)
 
-        # send a dinnertime reminder msg at 7:00pm
-        if hr_min_secs[0] == '19' and hr_min_secs[1] == '00':
-            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat dinner!:"
-            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-            await asyncio.sleep(60)
+            # send a dinnertime reminder msg at 7:00pm
+            if hr_min_secs[0] == '19' and hr_min_secs[1] == '00':
+                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat dinner!:"
+                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+                await asyncio.sleep(60)
 
-        # send a get sleep reminder msg at 12:00am
-        if hr_min_secs[0] == '00' and hr_min_secs[1] == '00':
-            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to go to sleep!:"
-            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-            await asyncio.sleep(60)
+            # send a get sleep reminder msg at 12:00am
+            if hr_min_secs[0] == '00' and hr_min_secs[1] == '00':
+                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to go to sleep!:"
+                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+                await asyncio.sleep(60)
 
     @client.event
     async def on_ready():
