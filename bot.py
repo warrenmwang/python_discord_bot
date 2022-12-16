@@ -58,9 +58,19 @@ GPT3_REPL_CHANNEL_NAME = os.getenv("GPT3_REPL_CHANNEL_NAME")
 GPT3_REPL_WORKING_PROMPT_FILENAME = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
 GPT3_REPL_WAITING_ON_CODE_CONFIRMATION = False
 GPT3_REPL_SCRIPT_FILENAME = os.getenv("GPT3_REPL_SCRIPT_FILENAME")
-CURR_CONVO_CONTEXT = str(os.getenv('GPT3_ROLEPLAY_CONTEXT')) # init it with the beginning roleplay info
-CURR_CONVO_CONTEXT_LEN_MAX = int(GPT3_SETTINGS["max_tokens"][0]) * 2 # init w/ double max_tokens length
 
+# we can have multiple GPT3 convo contexts, init with the roleplay one
+GPT3_PROMPT_PERSONAL_ASSISTANT_FILE=os.getenv("GPT3_PROMPT_PERSONAL_ASSISTANT_FILE")
+GPT3_PROMPT_ROLEPLAY_FILE=os.getenv("GPT3_PROMPT_ROLEPLAY_FILE")
+
+ALL_GPT3_AVAILABLE_PROMPTS = ["Roleplay", "Personal Assistant"]
+MAP_PROMPT_TO_PROMPTFILE = {
+    "Roleplay" : GPT3_PROMPT_ROLEPLAY_FILE,
+    "Personal Assistant": GPT3_PROMPT_PERSONAL_ASSISTANT_FILE
+}
+CURR_PROMPT = "Roleplay"
+CURR_CONVO_CONTEXT_LEN_MAX = int(GPT3_SETTINGS["max_tokens"][0]) * 2 # init w/ double max_tokens length
+CURR_CONVO_CONTEXT = None
 ALLOWED_CHANNELS = [GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2, PERSONAL_ASSISTANT_CHANNEL, GPT3_REPL_CHANNEL_NAME]
 
 ############################## STABLE DIFFUSION ##############################
@@ -188,7 +198,18 @@ async def gptset(usr_msg : str, GPT3_SETTINGS : dict) -> None:
 
 async def gpt_context_reset() -> None:
     global CURR_CONVO_CONTEXT
-    CURR_CONVO_CONTEXT = str(os.getenv('GPT3_ROLEPLAY_CONTEXT'))
+    global CURR_PROMPT
+    CURR_CONVO_CONTEXT = update_gpt3_convo_prompt(CURR_PROMPT)
+
+def update_gpt3_convo_prompt(CURR_PROMPT : str) -> str:
+    '''
+    given the current prompt, return the convo context
+    CURR_PROMPT -> filename -> read contents -> return contents
+    '''
+    global MAP_PROMPT_TO_PROMPTFILE
+    file = MAP_PROMPT_TO_PROMPTFILE[CURR_PROMPT]
+    with open(file, "r") as f:
+        return f.read()
 
 
 ############################## Personal Assistant ##############################
@@ -213,6 +234,9 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
     '''
     global CURR_CONVO_CONTEXT_LEN_MAX
     global DAILY_REMINDERS_SWITCH
+    global CURR_PROMPT
+    global ALL_GPT3_AVAILABLE_PROMPTS
+    global CURR_CONVO_CONTEXT
 
     usr_msg = usr_msg.lower()
 
@@ -237,9 +261,39 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         gptreplsettings: show gpt3 repl settings\n\
         gptset [setting_name] [new_value]: modify gpt3 settings\n\
         gptreplset [setting_name] [new_value]: modify gpt3 repl settings\n\
+        prompt: get the current prompt context\n\
+        change prompt, [new prompt]: change prompt to the specified prompt\n\
+        show prompts: show the available prompts for gpt3\n\
         "
         await msg.channel.send(help_str)
         return
+    
+    # show the current gpt3 prompt
+    if usr_msg == "prompt":
+        await msg.channel.send(CURR_PROMPT)
+        return
+
+    # change gpt3 prompt
+    if usr_msg[:13] == "change prompt":
+        # accept only the index number of the new prompt
+        try:
+            x = list(map(str.strip, usr_msg.split(',')))
+            new_ind = int(x[1])
+            new_prompt = ALL_GPT3_AVAILABLE_PROMPTS[new_ind]
+            CURR_PROMPT = new_prompt
+            # update the current context for the prompt given
+            CURR_CONVO_CONTEXT = update_gpt3_convo_prompt(CURR_PROMPT)
+            await msg.channel.send("New current prompt set to: " + new_prompt)
+            return
+        except Exception as e:
+            await msg.channel.send("usage: change prompt, [new prompt]")
+            return
+
+    # show available prompts as (ind. prompt)
+    if usr_msg == "show prompts":
+        x = "".join([f"{i}. {x}\n" for i, x in enumerate(ALL_GPT3_AVAILABLE_PROMPTS)])
+        await msg.channel.send(x) 
+        return 
 
     if usr_msg == "daily reminders":
         x = "ON" if DAILY_REMINDERS_SWITCH else "OFF"
@@ -290,7 +344,7 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         await msg.channel.send(x)
         return
 
-    # reset convo context (something like reset thread)
+    # reset the current convo with the curr prompt context
     if usr_msg == "reset thread":
         await gpt_context_reset()
         await msg.channel.send(f"Thread Reset. Starting with (prompt) convo len = {len(CURR_CONVO_CONTEXT)}")
@@ -433,13 +487,18 @@ def run_discord_bot():
                 await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
                 await asyncio.sleep(60)
 
+    ########################### INIT ############################
     @client.event
     async def on_ready():
         '''
         When ready, load all looping functions if any.
         '''
         print(f'{client.user} running!')
+        global CURR_CONVO_CONTEXT
+        CURR_CONVO_CONTEXT = update_gpt3_convo_prompt(CURR_PROMPT) # init it with the beginning roleplay info
+
         msgs_on_loop.start()
+    ########################### INIT ############################
 
     @client.event
     async def on_message(msg : discord.message.Message):
