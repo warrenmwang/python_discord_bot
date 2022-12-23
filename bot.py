@@ -21,14 +21,11 @@ load_dotenv()
 
 ############################## GLOBAL VARS ##############################
 TOKEN = os.getenv('DISCORD_TOKEN')
-PHOTOS_DIR = os.getenv('PHOTOS_DIR')
 
-STABLE_DIFFUSION_CHANNEL_NAME_1 = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME_1')
-STABLE_DIFFUSION_CHANNEL_NAME_2 = os.getenv('STABLE_DIFFUSION_CHANNEL_NAME_2')
-STABLE_DIFFUSION_PYTHON_BIN_PATH = os.getenv('STABLE_DIFFUSION_PYTHON_BIN_PATH')
-STABLE_DIFFUSION_SCRIPT_PATH = os.getenv('STABLE_DIFFUSION_SCRIPT_PATH')
-STABLE_DIFFUSION_ARGS_1 = os.getenv('STABLE_DIFFUSION_ARGS_1')
-STABLE_DIFFUSION_ARGS_2 = os.getenv('STABLE_DIFFUSION_ARGS_2')
+STABLE_DIFFUSION_CHANNEL = os.getenv('STABLE_DIFFUSION_CHANNEL')
+STABLE_DIFFUSION_SCRIPT = os.getenv('STABLE_DIFFUSION_SCRIPT')
+WAIFU_DIFFUSION_CHANNEL = os.getenv('WAIFU_DIFFUSION_CHANNEL')
+WAIFU_DIFFUSION_SCRIPT = os.getenv('WAIFU_DIFFUSION_SCRIPT')
 STABLE_DIFFUSION_OUTPUT_DIR = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
 
 MY_NAME = os.getenv('MY_NAME')
@@ -71,7 +68,7 @@ MAP_PROMPT_TO_PROMPTFILE = {
 CURR_PROMPT = "Roleplay"
 CURR_CONVO_CONTEXT_LEN_MAX = int(GPT3_SETTINGS["max_tokens"][0]) * 2 # init w/ double max_tokens length
 CURR_CONVO_CONTEXT = None
-ALLOWED_CHANNELS = [GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL_NAME_1, STABLE_DIFFUSION_CHANNEL_NAME_2, PERSONAL_ASSISTANT_CHANNEL, GPT3_REPL_CHANNEL_NAME]
+ALLOWED_CHANNELS = [GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL, WAIFU_DIFFUSION_CHANNEL, PERSONAL_ASSISTANT_CHANNEL, GPT3_REPL_CHANNEL_NAME]
 
 ############################## STABLE DIFFUSION ##############################
 
@@ -81,15 +78,12 @@ async def gen_stable_diffusion(msg, usr_msg, chnl_num):
     and generate image(s) using stablediffusion, then send them back to the user
     '''
     # first generate image(s)
-    prompt_file = f"{STABLE_DIFFUSION_OUTPUT_DIR}/prompt_file.txt"
-    with open(prompt_file, "w") as f:
-        f.write(f"{usr_msg} --outdir {STABLE_DIFFUSION_OUTPUT_DIR}")
-        f.write('\n')
-
     if chnl_num == 1:
-        cmd = f"{STABLE_DIFFUSION_PYTHON_BIN_PATH} {STABLE_DIFFUSION_SCRIPT_PATH} {STABLE_DIFFUSION_ARGS_1} {prompt_file}"
+        # stable diffusion
+        cmd = f"{STABLE_DIFFUSION_SCRIPT} \"{usr_msg}\""
     else:
-        cmd = f"{STABLE_DIFFUSION_PYTHON_BIN_PATH} {STABLE_DIFFUSION_SCRIPT_PATH} {STABLE_DIFFUSION_ARGS_2} {prompt_file}"
+        # waifu diffusion
+        cmd = f"{WAIFU_DIFFUSION_SCRIPT} \"{usr_msg}\""
 
     try:
         subprocess.run(cmd, shell=True)
@@ -111,12 +105,13 @@ async def gen_stable_diffusion(msg, usr_msg, chnl_num):
         for img in imgs_to_send:
             await msg.channel.send(file=discord.File(img))
 
-    # delete all files in outputdir
+    # delete all png files in outputdir
     for file in os.listdir(STABLE_DIFFUSION_OUTPUT_DIR):
         file_path = os.path.join(STABLE_DIFFUSION_OUTPUT_DIR, file)
         try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
+            if file_path[-4:] == ".png":
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
         except Exception as e:
             await msg.channel.send("something went wrong in cleanup procedure in stable diffusion")
 
@@ -213,21 +208,6 @@ def update_gpt3_convo_prompt(CURR_PROMPT : str) -> str:
 
 
 ############################## Personal Assistant ##############################
-
-async def get_weather_data(location: str) -> str:
-    '''
-    input: location (str) -- website url with weather data at a location presearched
-    output: str with whatever formatting that will be sent as a message directly
-    '''
-    res = requests.get(location)
-    try:
-        res.raise_for_status
-    except Exception as e:
-        return "Request to website failed."
-    soup = bs4.BeautifulSoup(res.text, features="html.parser")
-    ret_str = soup.select(".myforecast-current-lrg")[0].getText()
-    return ret_str
-
 async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) -> None:
     '''
     Custom commands that do a particular hard-coded thing.
@@ -246,7 +226,6 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         "List of available commands:\n\
         help: show this message\n\
         ip: show ip of computer running this bot\n\
-        weather: show weather at location of computer\n\
         calc: use python eval() function\n\
         remind me: reminders\n\
         time: print time\n\
@@ -403,11 +382,6 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
             await msg.channel.send("usage: remind me, [task_description], [time], [unit]")
         return
 
-    # Weather (location default get from env)
-    if usr_msg == "weather":
-        await msg.channel.send(await get_weather_data(MY_CURRENT_LOCATION))
-        return
-
     # Calculator
     # NOTE: this is dangerous if input is untrusted, can be used to run arbitrary python and shell code
     # this is personal project, so I'm fine with this
@@ -526,14 +500,14 @@ def run_discord_bot():
 
         ############################## StableDiffusion ##############################
 
-        # enable stablediffusion if you have a gpu (i switched to run this bot on a comp without one for now...)
-        if channel == STABLE_DIFFUSION_CHANNEL_NAME_1:
-            await msg.channel.send("stablediffusion disabled")
-            #await gen_stable_diffusion(msg, usr_msg, chnl_num=1)
+        # enable stablediffusion if you have a gpu (did not write for cpu)
+        if channel == STABLE_DIFFUSION_CHANNEL:
+            #await msg.channel.send("stablediffusion disabled")
+            await gen_stable_diffusion(msg, usr_msg, chnl_num=1)
             return
-        elif channel == STABLE_DIFFUSION_CHANNEL_NAME_2:
-            await msg.channel.send("stablediffusion disabled")
-            #await gen_stable_diffusion(msg, usr_msg, chnl_num=2)
+        elif channel == WAIFU_DIFFUSION_CHANNEL:
+            #await msg.channel.send("stablediffusion disabled")
+            await gen_stable_diffusion(msg, usr_msg, chnl_num=2)
             return
 
         ############################## GPT 3 REPL ##############################

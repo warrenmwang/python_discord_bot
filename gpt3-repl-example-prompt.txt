@@ -61,7 +61,7 @@ Python script:
 print(len("kingdom"))
 ```
 Out: 7
-Answer 7
+Answer: 7
 STOP
 
 Question: 
