@@ -2,7 +2,6 @@ import discord
 from discord.ext import tasks
 from discord import FFmpegPCMAudio
 import asyncio
-import random
 from datetime import datetime
 import os
 import openai
@@ -14,9 +13,6 @@ from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two
 
 # give calculator more advanced math capabilities
 import numpy as np
-
-# web scraping stuff
-# import requests, bs4
 
 load_dotenv()
 
@@ -249,7 +245,6 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         help_str = \
         "List of available commands:\n\
         help: show this message\n\
-        ip: show ip of computer running this bot\n\
         calc: use python eval() function\n\
         remind me: reminders\n\
         time: print time\n\
@@ -389,11 +384,6 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         await msg.channel.send(len(CURR_CONVO_CONTEXT))
         return
 
-	# return the current computer ip addr
-    if usr_msg == "ip":
-        await msg.channel.send(urllib.request.urlopen('https://ident.me').read().decode('utf8'))
-        return
-
     # Reminders based on a time
     if usr_msg[0:9] == "remind me":
         try:
@@ -470,9 +460,6 @@ def run_discord_bot():
                 prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You generate an inspirational quote for {MY_NAME}:"
                 msg = await gen_gpt3(prompt, msgs_on_loop_gpt_settings)
                 await msgs_on_loop_channel.send(msg)
-                #img_name = random.choice(os.listdir(PHOTOS_DIR))
-                #img_full_path = f"{PHOTOS_DIR}/{img_name}"
-                #await msgs_on_loop_channel.send(file=discord.File(img_full_path))
                 await asyncio.sleep(60)
 
             # send a lunchtime reminder msg at 12:00pm
