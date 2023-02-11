@@ -206,6 +206,27 @@ def update_gpt3_convo_prompt(CURR_PROMPT : str) -> str:
     with open(file, "r") as f:
         return f.read()
 
+###### Voice Channel ######
+
+async def join_vc(msg : discord.message.Message) -> None:
+    '''
+    joins the voice channel that the user is currently in
+    '''
+    if msg.author.voice:
+        channel = msg.author.voice.channel
+        await channel.connect()
+    else:
+        await msg.channel.send("You are not in a voice channel")
+
+async def leave_vc(msg : discord.message.Message) -> None:
+    '''
+    leaves the voice channel that the bot is currently in
+    '''
+    if msg.guild.voice_client:
+        await msg.guild.voice_client.disconnect()
+    else:
+        await msg.channel.send("I am not in a voice channel")
+
 
 ############################## Personal Assistant ##############################
 async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) -> None:
@@ -245,6 +266,16 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         show prompts: show the available prompts for gpt3\n\
         "
         await msg.channel.send(help_str)
+        return
+
+    # join the voice channel of the user
+    if usr_msg == "join_vc":
+        await join_vc(msg)
+        return
+
+    # leave the voice channel of the bot
+    if usr_msg == "leave_vc":
+        await leave_vc(msg)
         return
     
     # show the current gpt3 prompt
