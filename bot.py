@@ -1,5 +1,6 @@
 import discord
 from discord.ext import tasks
+from discord import FFmpegPCMAudio
 import asyncio
 import random
 from datetime import datetime
@@ -15,7 +16,7 @@ from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two
 import numpy as np
 
 # web scraping stuff
-import requests, bs4
+# import requests, bs4
 
 load_dotenv()
 
@@ -214,7 +215,9 @@ async def join_vc(msg : discord.message.Message) -> None:
     '''
     if msg.author.voice:
         channel = msg.author.voice.channel
-        await channel.connect()
+        voice = await channel.connect()
+        source = FFmpegPCMAudio('nevergonnagiveyouup.m4a')
+        player = voice.play(source)
     else:
         await msg.channel.send("You are not in a voice channel")
 
@@ -264,6 +267,10 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         prompt: get the current prompt context\n\
         change prompt, [new prompt]: change prompt to the specified prompt\n\
         show prompts: show the available prompts for gpt3\n\
+        \n\n\
+        Voice Channel:\n\
+        join_vc: join the voice channel of the user\n\
+        leave_vc: bot leaves the voice channel it's in\n\
         "
         await msg.channel.send(help_str)
         return
