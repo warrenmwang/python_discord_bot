@@ -7,12 +7,8 @@ import os
 import openai
 from dotenv import load_dotenv
 import subprocess
-import urllib.request
 
 from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two, GPT3_REPL_SETTINGS
-
-# give calculator more advanced math capabilities
-import numpy as np
 
 load_dotenv()
 
@@ -36,15 +32,16 @@ CODEX_OPENAI_API_KEY = os.getenv("CODEX_OPENAI_API_KEY")
 GPT3_CHANNEL_NAME = os.getenv('GPT3_CHANNEL_NAME')
 GPT3_CHANNEL_ID = os.getenv('GPT3_CHANNEL_ID')
 GPT3_SETTINGS = {
-    "engine": ["text-davinci-003", "str"],
+    "model": ["gpt-3.5-turbo", "str"],
+	"messages" : [[], "list of dicts"],
     "temperature": ["0.0", "float"],
-    "max_tokens": ["2000", "int"],
     "top_p": ["1.0", "float"],
     "frequency_penalty": ["0", "float"],
     "presence_penalty": ["0", "float"],
     "chatbot_roleplay": ["T", "str"],
-    "stop" : [["\n\nINPUT:"], "list of strings"]
 }
+DISCORD_MSGLEN_CAP = 2000
+CHATGPT_NAME="assistant"
 
 DAILY_REMINDERS_SWITCH = True
 PERSONAL_ASSISTANT_CHANNEL = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
@@ -63,7 +60,6 @@ MAP_PROMPT_TO_PROMPTFILE = {
     "Personal Assistant": GPT3_PROMPT_PERSONAL_ASSISTANT_FILE
 }
 CURR_PROMPT = "Roleplay"
-CURR_CONVO_CONTEXT_LEN_MAX = int(GPT3_SETTINGS["max_tokens"][0]) * 2 # init w/ double max_tokens length
 CURR_CONVO_CONTEXT = None
 ALLOWED_CHANNELS = [GPT3_CHANNEL_NAME, STABLE_DIFFUSION_CHANNEL, WAIFU_DIFFUSION_CHANNEL, PERSONAL_ASSISTANT_CHANNEL, GPT3_REPL_CHANNEL_NAME]
 
@@ -152,6 +148,15 @@ async def gen_gpt3_repl_step_two(usr_msg: str) -> str:
     ret_str = answer_one_question_step_two(usr_msg)
     return ret_str
 
+async def gpt_context_reset():
+    '''
+    resets the gpt3 context
+    > can be used at the start of program run and whenever a reset is wanted
+    '''
+    global GPT3_SETTINGS, CURR_CONVO_CONTEXT, CURR_PROMPT
+    CURR_CONVO_CONTEXT = update_gpt3_convo_prompt(CURR_PROMPT) # init it with the beginning roleplay info
+    GPT3_SETTINGS["messages"][0] = []
+    GPT3_SETTINGS["messages"][0].append({"role":CHATGPT_NAME, "content":CURR_CONVO_CONTEXT})
 
 async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
     '''
@@ -159,23 +164,25 @@ async def gen_gpt3(usr_msg : str, settings_dict: dict = GPT3_SETTINGS) -> str:
     returns the response str
     '''
     openai.api_key = GPT3_OPENAI_API_KEY
-    response = openai.Completion.create(
-        engine = settings_dict["engine"][0],
-        prompt = usr_msg,
+    # update log(list) of messages, then use it to query
+    settings_dict["messages"][0].append({"role": "user", "content": usr_msg})
+    response = openai.ChatCompletion.create(
+        model = settings_dict["model"][0],
+		messages = settings_dict["messages"][0],
         temperature = float(settings_dict["temperature"][0]),
-        max_tokens = int(settings_dict["max_tokens"][0]),
+        # max_tokens = int(settings_dict["max_tokens"][0]),
         top_p = float(settings_dict["top_p"][0]),
         frequency_penalty = float(settings_dict["frequency_penalty"][0]),
         presence_penalty = float(settings_dict["presence_penalty"][0]),
-        stop = settings_dict["stop"][0]
+        # stop = settings_dict["stop"][0]
     )
-    return response.choices[0].text
+    return response['choices'][0]['message']['content']
 
 async def gptsettings(msg : discord.message.Message, GPT3_SETTINGS : dict) -> None:
     '''
     prints out all available gpt3 settings, their current values, and their data types
     '''
-    await msg.channel.send("".join([f"{key} ({GPT3_SETTINGS[key][1]}) = {GPT3_SETTINGS[key][0]}\n" for key in GPT3_SETTINGS.keys()]))
+    await send_msg_to_usr(msg, "".join([f"{key} ({GPT3_SETTINGS[key][1]}) = {GPT3_SETTINGS[key][0]}\n" for key in GPT3_SETTINGS.keys()]))
 
 async def gptset(usr_msg : str, GPT3_SETTINGS : dict) -> None:
     '''
@@ -188,10 +195,6 @@ async def gptset(usr_msg : str, GPT3_SETTINGS : dict) -> None:
     setting, new_val = tmp[1], tmp[2]
     GPT3_SETTINGS[setting][0] = new_val # always gonna store str
 
-async def gpt_context_reset() -> None:
-    global CURR_CONVO_CONTEXT
-    global CURR_PROMPT
-    CURR_CONVO_CONTEXT = update_gpt3_convo_prompt(CURR_PROMPT)
 
 def update_gpt3_convo_prompt(CURR_PROMPT : str) -> str:
     '''
@@ -202,6 +205,21 @@ def update_gpt3_convo_prompt(CURR_PROMPT : str) -> str:
     file = MAP_PROMPT_TO_PROMPTFILE[CURR_PROMPT]
     with open(file, "r") as f:
         return f.read()
+    
+async def send_msg_to_usr(msg : discord.message.Message, usr_msg : str): 
+    '''
+    in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
+    the damn message (whether it be one or multiple messages)
+    '''
+    global DISCORD_MSGLEN_CAP
+    diff = len(usr_msg)
+    start_tmp = 0
+    end_tmp = DISCORD_MSGLEN_CAP
+    while diff > 0:
+        await msg.channel.send(usr_msg[start_tmp:end_tmp])
+        start_tmp = end_tmp
+        end_tmp += DISCORD_MSGLEN_CAP
+        diff -= DISCORD_MSGLEN_CAP
 
 ###### Voice Channel ######
 
@@ -245,14 +263,10 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         help_str = \
         "List of available commands:\n\
         help: show this message\n\
-        calc: use python eval() function\n\
         remind me: reminders\n\
-        time: print time\n\
         daily reminders: show current status of daily reminders\n\
         daily reminders toggle: toggle the daily reminders\n\nGPT Settings:\n\n\
         convo len: show current gpt3 context length\n\
-        convo max len: show current max convo len\n\
-        change convo max len, [new_len]: change convo max len to new_len\n\
         reset thread: reset gpt3 context length\n\
         show thread: show the entire current convo context\n\
         gptsettings: show the current gpt3 settings\n\
@@ -351,34 +365,16 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
     
     # show the current thread
     if usr_msg == "show thread":
-        # discord caps at 2000 chars per message body
-        x = CURR_CONVO_CONTEXT[-2000:] if len(CURR_CONVO_CONTEXT) > 2000 else CURR_CONVO_CONTEXT
-        await msg.channel.send(x)
+        await send_msg_to_usr(msg, CURR_CONVO_CONTEXT)
         return
 
     # reset the current convo with the curr prompt context
     if usr_msg == "reset thread":
+        # await gpt_context_reset()
         await gpt_context_reset()
         await msg.channel.send(f"Thread Reset. Starting with (prompt) convo len = {len(CURR_CONVO_CONTEXT)}")
         return
     
-    # max convo len
-    if usr_msg == "convo max len":
-        await msg.channel.send(CURR_CONVO_CONTEXT_LEN_MAX) 
-        return
-
-    # idk if im going to use this function, but I'm going to write it
-    if usr_msg[:20] == "change convo max len":
-        try:
-            tmp = list(map(str.strip, usr_msg.split(',')))
-            tmp1 = tmp[1]
-            CURR_CONVO_CONTEXT_LEN_MAX = int(tmp1) 
-            await msg.channel.send(f"New convo max len = {CURR_CONVO_CONTEXT_LEN_MAX}")
-            return
-        except Exception as e:
-            await msg.channel.send("usage: change convo max len, [new_len]")
-            return
-        
     # check curr convo context length
     if usr_msg == "convo len":
         await msg.channel.send(len(CURR_CONVO_CONTEXT))
@@ -408,24 +404,6 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
             await msg.channel.send(f"REMINDER: {task}")
         except Exception as e:
             await msg.channel.send("usage: remind me, [task_description], [time], [unit]")
-        return
-
-    # Calculator
-    # NOTE: this is dangerous if input is untrusted, can be used to run arbitrary python and shell code
-    # this is personal project, so I'm fine with this
-    if usr_msg[0:5] == 'calc:':
-        try:
-            tmp = usr_msg.split(":")
-            await msg.channel.send(eval(tmp[1]))
-        except Exception as e:
-            await msg.channel.send("usage: calc: [math exp in python (available libraries include: numpy)]")
-        return
-
-    # Time
-    if usr_msg[0:5] == 'time':
-        tmp = str(datetime.now()).split()
-        date, time_24_hr = tmp[0], tmp[1]
-        await msg.channel.send(f"Date: {date}\nTime 24H: {time_24_hr}")
         return
 
     await msg.channel.send("That command was not found.")
@@ -493,8 +471,7 @@ def run_discord_bot():
         When ready, load all looping functions if any.
         '''
         print(f'{client.user} running!')
-        global CURR_CONVO_CONTEXT
-        CURR_CONVO_CONTEXT = update_gpt3_convo_prompt(CURR_PROMPT) # init it with the beginning roleplay info
+        await gpt_context_reset()
 
         msgs_on_loop.start()
     ########################### INIT ############################
@@ -553,22 +530,15 @@ def run_discord_bot():
         ############################## GPT 3 ##############################
         # if sent in GPT_CHANNEL3, send back a GPT3 response
         if channel == GPT3_CHANNEL_NAME:
-            # inject additional context for simple roleplay
-            if GPT3_SETTINGS["chatbot_roleplay"][0] == "T":
-                global CURR_CONVO_CONTEXT
-                global CURR_CONVO_CONTEXT_LEN_MAX
-                # remove half of oldest convo context if too long, then append the new usg_msg
-                if len(CURR_CONVO_CONTEXT) > CURR_CONVO_CONTEXT_LEN_MAX:
-                    CURR_CONVO_CONTEXT = CURR_CONVO_CONTEXT[len(CURR_CONVO_CONTEXT)//2 : ]
-                    CURR_CONVO_CONTEXT = f"{CURR_CONVO_CONTEXT}\n\nINPUT:{usr_msg}\n\nOUTPUT:"
-                # else keep adding current convo to the current context
-                else:
-                    CURR_CONVO_CONTEXT += f"\n\nINPUT:{usr_msg}\n\nOUTPUT:"
-                
-                gpt_response = await gen_gpt3(CURR_CONVO_CONTEXT)
-                CURR_CONVO_CONTEXT += gpt_response
-
-            await msg.channel.send(gpt_response)
+            global CURR_CONVO_CONTEXT
+            gpt_response = await gen_gpt3(usr_msg)
+            formatted_response = {"role":CHATGPT_NAME, "content":gpt_response}
+            # update the str representation of msg log (not used for generations), to be displayed if asked in PA channel
+            CURR_CONVO_CONTEXT += f"user: {usr_msg}\n"
+            CURR_CONVO_CONTEXT += f"{CHATGPT_NAME}: {gpt_response}\n"             
+            GPT3_SETTINGS["messages"][0].append(formatted_response)
+            # await msg.channel.send(gpt_response)
+            await send_msg_to_usr(msg, gpt_response)
             return
 
     client.run(TOKEN)
