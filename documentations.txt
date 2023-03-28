@@ -1,1 +1,4 @@
 https://platform.openai.com/docs/guides/chat/introduction?utm_medium=email&_hsmi=248340301&_hsenc=p2ANqtz-9SraqGTM1VAJwBWAbLo-l9gXprmg5-Vagk4fsaygr8QZfdl7oWelqRNEcJT_wbsNjdnCY4ygoAAAlw3WZzVQmC7BOd74F3JMrTUy9seMwWZpri0Dw&utm_content=248340301&utm_source=hs_email
+
+> trying to add whisper
+pip install git+https://github.com/openai/whisper.git

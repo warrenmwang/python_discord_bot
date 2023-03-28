@@ -43,7 +43,7 @@ GPT3_SETTINGS = {
 DISCORD_MSGLEN_CAP = 2000
 CHATGPT_NAME="assistant"
 
-DAILY_REMINDERS_SWITCH = True
+DAILY_REMINDERS_SWITCH = False # initially off
 PERSONAL_ASSISTANT_CHANNEL = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
 GPT3_REPL_CHANNEL_NAME = os.getenv("GPT3_REPL_CHANNEL_NAME")
 GPT3_REPL_WORKING_PROMPT_FILENAME = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
@@ -244,6 +244,32 @@ async def leave_vc(msg : discord.message.Message) -> None:
     else:
         await msg.channel.send("I am not in a voice channel")
 
+#### Alpaca ####
+async def alpaca(msg : discord.message.Message, usr_msg : str) -> None:
+    ''''
+    generate response using alpaca.cpp 7B model (this laptop is old)
+    and send the reply
+    '''
+    # run the bash script alpaca.sh with the usr_msg as the argument, and get the response in alpaca_response.txt
+    cmd = f"./alpaca.sh {usr_msg}"
+    try:
+        subprocess.run(cmd, shell=True)
+    except Exception as e:
+        await msg.channel.send(f"alpaca got error: {e}")
+        return
+
+    # read the response from the file
+    with open("./alpaca.cpp/alpaca_response.txt", "r") as f:
+        response = f.read()
+
+    # send the response
+    await send_msg_to_usr(msg, response)
+
+    # cleanup
+    os.system("rm ./alpaca.cpp/alpaca_response.txt")
+
+
+
 
 ############################## Personal Assistant ##############################
 async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) -> None:
@@ -280,8 +306,16 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
         Voice Channel:\n\
         join_vc: join the voice channel of the user\n\
         leave_vc: bot leaves the voice channel it's in\n\
+        Alpaca:\n\
+        alpaca [prompt]: get a response from alpaca\n\
         "
         await msg.channel.send(help_str)
+        return
+
+    # alpaca
+    if usr_msg[:6] == "alpaca":
+        # print(usr_msg[7:])
+        await alpaca(msg, usr_msg[7:])
         return
 
     # join the voice channel of the user
@@ -408,61 +442,64 @@ async def personal_assistant_block(msg : discord.message.Message, usr_msg: str) 
 
     await msg.channel.send("That command was not found.")
 
+###################### MSGS on LOOP ############################
+@tasks.loop(seconds = 30)
+async def msgs_on_loop():
+    if DAILY_REMINDERS_SWITCH:
+        hr_min_secs = str(datetime.now()).split()[1].split(':')
+        msgs_on_loop_channel = client.get_channel(int(GPT3_CHANNEL_ID))
+        msgs_on_loop_gpt_settings = {
+                "engine": ["text-davinci-002", "str"],
+                "temperature": ["0.7", "float"],
+                "max_tokens": ["200", "int"],
+                "top_p": ["1.0", "float"],
+                "frequency_penalty": ["0", "float"],
+                "presence_penalty": ["0", "float"],
+                "stop": [["INPUT:"], "list of strings"] # not used here, but need for function
+            }
+
+        # send a good morning msg at 7:00am
+        if hr_min_secs[0] == '07' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You generate an inspirational quote for {MY_NAME}:"
+            msg = await gen_gpt3(prompt, msgs_on_loop_gpt_settings)
+            await msgs_on_loop_channel.send(msg)
+            await asyncio.sleep(60)
+
+        # send a lunchtime reminder msg at 12:00pm
+        if hr_min_secs[0] == '12' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat lunch!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+            await asyncio.sleep(60)
+
+        # send a you can do it msg at 3:00pm
+        if hr_min_secs[0] == '15' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} that his dream of '{MY_DREAM}' will come true!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+            await asyncio.sleep(60)
+
+        # send a dinnertime reminder msg at 7:00pm
+        if hr_min_secs[0] == '19' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat dinner!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+            await asyncio.sleep(60)
+
+        # send a get sleep reminder msg at 12:00am
+        if hr_min_secs[0] == '00' and hr_min_secs[1] == '00':
+            prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to go to sleep!:"
+            await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
+            await asyncio.sleep(60)
+
 ############################## Main Function ##############################
 
 def run_discord_bot():
     '''
-    Main loop
+    Main function
     '''
     intents = discord.Intents.all()
     client = discord.Client(intents=intents)
     global DAILY_REMINDERS_SWITCH
 
-    @tasks.loop(seconds = 30)
-    async def msgs_on_loop():
-        if DAILY_REMINDERS_SWITCH:
-            hr_min_secs = str(datetime.now()).split()[1].split(':')
-            msgs_on_loop_channel = client.get_channel(int(GPT3_CHANNEL_ID))
-            msgs_on_loop_gpt_settings = {
-                    "engine": ["text-davinci-002", "str"],
-                    "temperature": ["0.7", "float"],
-                    "max_tokens": ["200", "int"],
-                    "top_p": ["1.0", "float"],
-                    "frequency_penalty": ["0", "float"],
-                    "presence_penalty": ["0", "float"],
-                    "stop": [["INPUT:"], "list of strings"] # not used here, but need for function
-                }
-
-            # send a good morning msg at 7:00am
-            if hr_min_secs[0] == '07' and hr_min_secs[1] == '00':
-                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You generate an inspirational quote for {MY_NAME}:"
-                msg = await gen_gpt3(prompt, msgs_on_loop_gpt_settings)
-                await msgs_on_loop_channel.send(msg)
-                await asyncio.sleep(60)
-
-            # send a lunchtime reminder msg at 12:00pm
-            if hr_min_secs[0] == '12' and hr_min_secs[1] == '00':
-                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat lunch!:"
-                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-                await asyncio.sleep(60)
-
-            # send a you can do it msg at 3:00pm
-            if hr_min_secs[0] == '15' and hr_min_secs[1] == '00':
-                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} that his dream of '{MY_DREAM}' will come true!:"
-                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-                await asyncio.sleep(60)
-
-            # send a dinnertime reminder msg at 7:00pm
-            if hr_min_secs[0] == '19' and hr_min_secs[1] == '00':
-                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to eat dinner!:"
-                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-                await asyncio.sleep(60)
-
-            # send a get sleep reminder msg at 12:00am
-            if hr_min_secs[0] == '00' and hr_min_secs[1] == '00':
-                prompt = f"{os.getenv('GPT3_ROLEPLAY_CONTEXT')} You send a text message reminding {MY_NAME} to go to sleep!:"
-                await msgs_on_loop_channel.send(await gen_gpt3(prompt, msgs_on_loop_gpt_settings))
-                await asyncio.sleep(60)
+    
 
     ########################### INIT ############################
     @client.event
@@ -537,7 +574,6 @@ def run_discord_bot():
             CURR_CONVO_CONTEXT += f"user: {usr_msg}\n"
             CURR_CONVO_CONTEXT += f"{CHATGPT_NAME}: {gpt_response}\n"             
             GPT3_SETTINGS["messages"][0].append(formatted_response)
-            # await msg.channel.send(gpt_response)
             await send_msg_to_usr(msg, gpt_response)
             return
 
