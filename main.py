@@ -54,16 +54,16 @@ class BMO:
         self.gpt3_repl_script_filename = os.getenv("GPT3_REPL_SCRIPT_FILENAME")
 
         # we can have multiple GPT3 convo contexts, init with the roleplay one
-        self.gpt3_prompt_personal_assistant_file=os.getenv("GPT3_PROMPT_PERSONAL_ASSISTANT_FILE")
-        self.gpt3_prompt_roleplay_file=os.getenv("GPT3_PROMPT_ROLEPLAY_FILE")
+        # self.gpt3_prompt_personal_assistant_file=os.getenv("GPT3_PROMPT_PERSONAL_ASSISTANT_FILE")
+        # self.gpt3_prompt_roleplay_file=os.getenv("GPT3_PROMPT_ROLEPLAY_FILE")
 
-        self.all_gpt3_available_prompts = ["Roleplay", "Personal Assistant"]
-        self.map_prompt_to_promptfile = {
-            "Roleplay" : self.gpt3_prompt_roleplay_file,
-            "Personal Assistant": self.gpt3_prompt_personal_assistant_file
-        }
-        self.curr_prompt = "Personal Assistant" # default to personal assistant
-        self.curr_convo_context = None
+        # gpt prompts
+        self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE")
+        self.all_gpt3_available_prompts = [] # list of all prompt names
+        self.map_promptname_to_prompt = {} # (k,v) = (prompt_name, prompt_as_str)
+        self.curr_prompt_name = None  # name of prompt we're currently using
+        self.curr_convo_context = None # string of all curr convo
+
         self.allowed_channels = [self.gpt3_channel_name, self.stable_diffusion_channel, self.waifu_diffusion_channel, self.personal_assistant_channel, self.gpt3_repl_channel_name]
 
         self.intents = discord.Intents.all()
@@ -155,13 +155,33 @@ class BMO:
         return ret_str
 
     ############################## GPT3 ##############################
+    async def gpt_prompt_initializer(self) -> None:
+        '''
+        loads in all the prompts from the prompt files
+        '''
+        # load in all the prompts
+        with open(self.gpt_prompts_file, "r") as f:
+            lines = f.readlines()
+            
+            # format is each line has [prompt_name] [prompt], the separator is <SEP>
+            for line in lines:
+                line = line.strip()
+                prompt_name = line.split("<SEP>")[0]
+                prompt = line.split("<SEP>")[1]
+                self.all_gpt3_available_prompts.append(prompt_name)
+                self.map_promptname_to_prompt[prompt_name] = prompt
+
+        # init with first prompt
+        self.curr_prompt_name = self.all_gpt3_available_prompts[0]
+        await self.gpt_context_reset()
+
     async def gpt_context_reset(self) -> None:
         '''
         resets the gpt3 context
         > can be used at the start of program run and whenever a reset is wanted
         '''
-        self.curr_convo_context = self.update_gpt3_convo_prompt(self.curr_prompt) # init it with the beginning roleplay info
-        self.gpt3_settings["messages"][0] = []
+        self.curr_convo_context = self.map_promptname_to_prompt[self.curr_prompt_name]
+        self.gpt3_settings["messages"][0] = [] # reset messages, should be gc'd
         self.gpt3_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.curr_convo_context})
 
     async def gen_gpt3(self, usr_msg : str, settings_dict: dict = None) -> str:
@@ -205,16 +225,6 @@ class BMO:
         tmp = usr_msg.split()
         setting, new_val = tmp[1], tmp[2]
         gpt3_settings[setting][0] = new_val # always gonna store str
-
-
-    def update_gpt3_convo_prompt(self, curr_prompt : str) -> str:
-        '''
-        given the current prompt, return the convo context
-        CURR_PROMPT -> filename -> read contents -> return contents
-        '''
-        file = self.map_prompt_to_promptfile[curr_prompt]
-        with open(file, "r") as f:
-            return f.read()
         
     async def send_msg_to_usr(self, msg : discord.message.Message, usr_msg : str): 
         '''
@@ -301,7 +311,7 @@ class BMO:
             gptreplsettings: show gpt3 repl settings\n\
             gptset [setting_name] [new_value]: modify gpt3 settings\n\
             gptreplset [setting_name] [new_value]: modify gpt3 repl settings\n\
-            prompt: get the current prompt context\n\
+            curr prompt: get the current prompt name\n\
             change prompt, [new prompt]: change prompt to the specified prompt\n\
             show prompts: show the available prompts for gpt3\n\
             \n\n\
@@ -338,21 +348,24 @@ class BMO:
             return
         
         # show the current gpt3 prompt
-        if usr_msg == "prompt":
-            await msg.channel.send(CURR_PROMPT)
+        if usr_msg == "curr prompt":
+            await msg.channel.send(self.curr_prompt_name)
             return
+
+        # TODO: add a command to add a new prompt to the list of prompts and save to file
+
+        # TODO: add a command to update a prompt (no renames allowed)
+
+        # TODO: add a command to delete a prompt (just remove from the list of prompts and save to file), probably need to rerun the gpt_prompt_initializer func after
 
         # change gpt3 prompt
         if usr_msg[:13] == "change prompt":
-            # accept only the index number of the new prompt
+            # accept only the prompt name, update both str of msgs context and the messages list in gptsettings
             try:
-                x = list(map(str.strip, usr_msg.split(',')))
-                new_ind = int(x[1])
-                new_prompt = self.all_gpt3_available_prompts[new_ind]
-                CURR_PROMPT = new_prompt
-                # update the current context for the prompt given
-                self.curr_convo_context = self.update_gpt3_convo_prompt(CURR_PROMPT)
-                await msg.channel.send("New current prompt set to: " + new_prompt)
+                self.curr_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
+                self.curr_convo_context = self.map_promptname_to_prompt[self.curr_prompt_name]
+                await self.gpt_context_reset()
+                await msg.channel.send("New current prompt set to: " + self.curr_prompt_name)
                 return
             except Exception as e:
                 await msg.channel.send("usage: change prompt, [new prompt]")
@@ -360,7 +373,7 @@ class BMO:
 
         # show available prompts as (ind. prompt)
         if usr_msg == "show prompts":
-            x = "".join([f"{i}. {x}\n" for i, x in enumerate(self.all_gpt3_available_prompts)])
+            x = "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
             await msg.channel.send(x) 
             return 
 
@@ -463,7 +476,8 @@ class BMO:
             When ready, load all looping functions if any.
             '''
             print(f'{self.client.user} running!')
-            await self.gpt_context_reset()
+            # await self.gpt_context_reset()
+            await self.gpt_prompt_initializer()
 
         ########################### ON ANY MSG ############################
 
@@ -507,7 +521,7 @@ class BMO:
             # enabled! confirmation is done through the same channel
             if channel == self.gpt3_repl_channel_name:
                 
-                self.send_msg_to_usr(msg, "GPT3 REPL is currently disabled.")
+                await self.send_msg_to_usr(msg, "GPT3 REPL is currently disabled.")
                 
                 # if self.gpt3_repl_waiting_on_code_confirmation == False:
                 #     self.gpt3_repl_waiting_on_code_confirmation = True
