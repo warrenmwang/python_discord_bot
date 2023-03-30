@@ -9,6 +9,10 @@ import openai
 from dotenv import load_dotenv
 import subprocess
 
+# testing voice
+# import speech_recognition as sr
+# import threading
+
 from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two, GPT3_REPL_SETTINGS
 
 load_dotenv()
@@ -46,8 +50,14 @@ class BMO:
         self.discord_msglen_cap = 2000
         self.chatgpt_name="assistant"
 
+        self.gpt_gpt_channel_name = os.getenv('GPT_GPT_CHANNEL_NAME') 
+
         self.daily_reminders_switch = False # initially off
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
+        self.personal_assistant_state = None
+        self.personal_assistant_modify_prompts_state = None
+        self.personal_assistant_modify_prompts_buff = []
+
         self.gpt3_repl_channel_name = os.getenv("GPT3_REPL_CHANNEL_NAME")
         self.gpt3_repl_working_prompt_filename = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
         self.gpt3_repl_waiting_on_code_confirmation = False
@@ -59,10 +69,9 @@ class BMO:
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE")
-        self.all_gpt3_available_prompts = [] # list of all prompt names
-        self.map_promptname_to_prompt = {} # (k,v) = (prompt_name, prompt_as_str)
+        self.all_gpt3_available_prompts = None # list of all prompt names
+        self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
-        self.curr_convo_context = None # string of all curr convo
 
         self.allowed_channels = [self.gpt3_channel_name, self.stable_diffusion_channel, self.waifu_diffusion_channel, self.personal_assistant_channel, self.gpt3_repl_channel_name]
 
@@ -155,10 +164,14 @@ class BMO:
         return ret_str
 
     ############################## GPT3 ##############################
-    async def gpt_prompt_initializer(self) -> None:
+    async def gpt_read_prompts_from_file(self) -> None:
         '''
-        loads in all the prompts from the prompt files
+        reads all the prompts from the prompt file and stores them in self.all_gpt3_available_prompts and the mapping
         '''
+        # reset curr state of prompts
+        self.all_gpt3_available_prompts = []
+        self.map_promptname_to_prompt = {}
+
         # load in all the prompts
         with open(self.gpt_prompts_file, "r") as f:
             lines = f.readlines()
@@ -171,6 +184,12 @@ class BMO:
                 self.all_gpt3_available_prompts.append(prompt_name)
                 self.map_promptname_to_prompt[prompt_name] = prompt
 
+    async def gpt_prompt_initializer(self) -> None:
+        '''
+        loads in all the prompts from the prompt file
+        '''
+        # read the prompts from disk
+        await self.gpt_read_prompts_from_file()
         # init with first prompt
         self.curr_prompt_name = self.all_gpt3_available_prompts[0]
         await self.gpt_context_reset()
@@ -180,9 +199,17 @@ class BMO:
         resets the gpt3 context
         > can be used at the start of program run and whenever a reset is wanted
         '''
-        self.curr_convo_context = self.map_promptname_to_prompt[self.curr_prompt_name]
         self.gpt3_settings["messages"][0] = [] # reset messages, should be gc'd
-        self.gpt3_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.curr_convo_context})
+        self.gpt3_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.map_promptname_to_prompt[self.curr_prompt_name]})
+    
+    async def get_curr_gpt_thread(self) -> str:
+        '''
+        generates the current gpt conversation thread from the gptsettings messages list
+        '''
+        ret_str = ""
+        for msg in self.gpt3_settings["messages"][0]:
+            ret_str += f"{msg['role']}: {msg['content']}\n" 
+        return ret_str
 
     async def gen_gpt3(self, usr_msg : str, settings_dict: dict = None) -> str:
         '''
@@ -225,6 +252,12 @@ class BMO:
         tmp = usr_msg.split()
         setting, new_val = tmp[1], tmp[2]
         gpt3_settings[setting][0] = new_val # always gonna store str
+
+    def get_all_gpt_prompts_as_str(self):
+        '''
+        constructs the string representing each [prompt_name, prompt] as one long string and return it
+        '''
+        return "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
         
     async def send_msg_to_usr(self, msg : discord.message.Message, usr_msg : str): 
         '''
@@ -242,26 +275,26 @@ class BMO:
 
     ###### Voice Channel ######
 
-    async def join_vc(self, msg : discord.message.Message) -> None:
-        '''
-        joins the voice channel that the user is currently in
-        '''
-        if msg.author.voice:
-            channel = msg.author.voice.channel
-            voice = await channel.connect()
-            source = FFmpegPCMAudio('nevergonnagiveyouup.m4a')
-            player = voice.play(source)
-        else:
-            await msg.channel.send("You are not in a voice channel")
+    # async def join_vc(self, msg : discord.message.Message) -> None:
+    #     '''
+    #     joins the voice channel that the user is currently in
+    #     '''
+    #     if msg.author.voice:
+    #         channel = msg.author.voice.channel
+    #         voice = await channel.connect()
+    #         source = FFmpegPCMAudio('nevergonnagiveyouup.m4a')
+    #         player = voice.play(source)
+    #     else:
+    #         await msg.channel.send("You are not in a voice channel")
 
-    async def leave_vc(self, msg : discord.message.Message) -> None:
-        '''
-        leaves the voice channel that the bot is currently in
-        '''
-        if msg.guild.voice_client:
-            await msg.guild.voice_client.disconnect()
-        else:
-            await msg.channel.send("I am not in a voice channel")
+    # async def leave_vc(self, msg : discord.message.Message) -> None:
+    #     '''
+    #     leaves the voice channel that the bot is currently in
+    #     '''
+    #     if msg.guild.voice_client:
+    #         await msg.guild.voice_client.disconnect()
+    #     else:
+    #         await msg.channel.send("I am not in a voice channel")
 
     #### Alpaca ####
     async def alpaca(self, msg : discord.message.Message, usr_msg : str) -> None:
@@ -294,6 +327,76 @@ class BMO:
         '''
         Custom commands that do a particular hard-coded thing.
         '''
+
+        async def _modify_prompts(self, msg : discord.message.Message, usr_msg : str) -> None:
+            if self.personal_assistant_modify_prompts_state == "asked what to do":
+                # check response
+                if usr_msg == "edit":
+                    self.personal_assistant_modify_prompts_state = "edit"
+                    await self.send_msg_to_usr(msg, "Ok which prompt would you like to edit? [enter prompt name]")
+                    return
+                elif usr_msg == "add":
+                    self.personal_assistant_modify_prompts_state = "add"
+                    await self.send_msg_to_usr(msg, "Ok, write a prompt in this format: [name]<SEP>[PROMPT] w/o the square brackets.")
+                    return
+                elif usr_msg == "delete":
+                    self.personal_assistant_modify_prompts_state = "delete"
+                    await self.send_msg_to_usr(msg, "Ok, which prompt would you like to delete? [enter prompt name]")
+                    return
+                else:
+                    await self.send_msg_to_usr(msg, "Invalid response, please try again.")
+                    return
+            if self.personal_assistant_modify_prompts_state == "edit":
+                await self.send_msg_to_usr(msg, f"Ok, you said to edit {usr_msg}.\nSend me the new prompt for this prompt name. (just the new prompt in its entirety)")
+                self.personal_assistant_modify_prompts_buff.append(usr_msg)
+                self.personal_assistant_modify_prompts_state = "edit2"
+                return
+            if self.personal_assistant_modify_prompts_state == "edit2":
+                # update our mapping of prompt name to prompt dict, then write the new prompts to file
+                prompt_name = self.personal_assistant_modify_prompts_buff.pop()
+                new_prompt = usr_msg
+                self.map_promptname_to_prompt[prompt_name] = new_prompt
+                # write the new prompts to file
+                with open(self.gpt_prompts_file, "w") as f:
+                    for k,v in self.map_promptname_to_prompt.items():
+                        f.write(f"{k}<SEP>{v}\n")
+                await self.send_msg_to_usr(msg, f"Updated '{prompt_name}' to '{new_prompt}'")
+                self.personal_assistant_state = None
+                self.personal_assistant_modify_prompts_state = None
+                return
+
+            if self.personal_assistant_modify_prompts_state == "add":
+                await self.send_msg_to_usr(msg, f"Ok, you said to add '{usr_msg}'...")
+                prompt_name = usr_msg.split("<SEP>")[0]
+                prompt = usr_msg.split("<SEP>")[1]
+                self.map_promptname_to_prompt[prompt_name] = prompt
+                # write the new prompts to file
+                with open(self.gpt_prompts_file, "w") as f:
+                    for k,v in self.map_promptname_to_prompt.items():
+                        f.write(f"{k}<SEP>{v}\n")
+                await self.send_msg_to_usr(msg, f"Added '{prompt_name}' with prompt '{prompt}'")
+                self.personal_assistant_state = None
+                self.personal_assistant_modify_prompts_state = None
+                return
+            if self.personal_assistant_modify_prompts_state == "delete":
+                await self.send_msg_to_usr(msg, f"Ok, you said to delete '{usr_msg}'...")
+                prompt_name = usr_msg
+                del self.map_promptname_to_prompt[prompt_name]
+                # write the new prompts to file
+                with open(self.gpt_prompts_file, "w") as f:
+                    for k,v in self.map_promptname_to_prompt.items():
+                        f.write(f"{k}<SEP>{v}\n")
+                await self.send_msg_to_usr(msg, f"Deleted '{prompt_name}'")
+                self.personal_assistant_state = None
+                self.personal_assistant_modify_prompts_state = None
+                return
+            # TODO: add functionality to edit a prompt's name? (currently only have functionality to edit the prompt itself)
+
+
+        if self.personal_assistant_state == "modify prompts":
+            await _modify_prompts(self, msg, usr_msg)
+            return
+
         usr_msg = usr_msg.lower()
 
         # list all the commands available
@@ -301,9 +404,9 @@ class BMO:
             help_str = \
             "List of available commands:\n\
             help: show this message\n\
-            remind me: reminders\n\
-            daily reminders: show current status of daily reminders\n\
-            daily reminders toggle: toggle the daily reminders\n\nGPT Settings:\n\n\
+            remind me: set a reminder that will ping you in a specified amount of time\n\n\
+            \
+            GPT Settings:\n\
             convo len: show current gpt3 context length\n\
             reset thread: reset gpt3 context length\n\
             show thread: show the entire current convo context\n\
@@ -312,18 +415,27 @@ class BMO:
             gptset [setting_name] [new_value]: modify gpt3 settings\n\
             gptreplset [setting_name] [new_value]: modify gpt3 repl settings\n\
             curr prompt: get the current prompt name\n\
-            change prompt, [new prompt]: change prompt to the specified prompt\n\
+            change prompt, [new prompt]: change prompt to the specified prompt(NOTE: resets entire message thread)\n\
             show prompts: show the available prompts for gpt3\n\
-            \n\n\
-            Voice Channel:\n\
-            join_vc: join the voice channel of the user\n\
-            leave_vc: bot leaves the voice channel it's in\n\
+            list models: list the available gpt models\n\
+            modify prompts: modify the prompts for gpt\n\n\
+            \
+            Voice Channel:\n\n\
+            Local LLMs:\n\
             Alpaca:\n\
             alpaca [prompt]: get a response from alpaca\n\
             "
             await msg.channel.send(help_str)
             return
 
+        # list available models of interest
+        if usr_msg == "list models":
+            await self.send_msg_to_usr(msg, "Available models:\n\
+            gpt-3.5-turbo (4,096 tokens)\n\
+            gpt-4 (8,192 tokens)\n\
+            gpt-4-32k (32,768 tokens)\n")
+            return
+        
         # alpaca
         if usr_msg[:6] == "alpaca":
             prompt = usr_msg[7:]
@@ -337,33 +449,34 @@ class BMO:
             await self.alpaca(msg, prompt)
             return
 
-        # join the voice channel of the user
-        if usr_msg == "join_vc":
-            await self.join_vc(msg)
-            return
+        # # join the voice channel of the user
+        # if usr_msg == "join_vc":
+        #     await self.join_vc(msg)
+        #     return
 
-        # leave the voice channel of the bot
-        if usr_msg == "leave_vc":
-            await self.leave_vc(msg)
-            return
+        # # leave the voice channel of the bot
+        # if usr_msg == "leave_vc":
+        #     await self.leave_vc(msg)
+        #     return
         
         # show the current gpt3 prompt
         if usr_msg == "curr prompt":
             await msg.channel.send(self.curr_prompt_name)
             return
 
-        # TODO: add a command to add a new prompt to the list of prompts and save to file
-
-        # TODO: add a command to update a prompt (no renames allowed)
-
-        # TODO: add a command to delete a prompt (just remove from the list of prompts and save to file), probably need to rerun the gpt_prompt_initializer func after
+        # add a command to add a new prompt to the list of prompts and save to file
+        if usr_msg == "modify prompts":
+            if self.personal_assistant_state is None:
+                self.personal_assistant_state = "modify prompts"
+                self.personal_assistant_modify_prompts_state = "asked what to do" 
+                await self.send_msg_to_usr(msg, f"Do you want to edit an existing prompt, add a new prompt, or delete a prompt? (edit/add/delete)\nThese are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}")
+                return
 
         # change gpt3 prompt
         if usr_msg[:13] == "change prompt":
             # accept only the prompt name, update both str of msgs context and the messages list in gptsettings
             try:
                 self.curr_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
-                self.curr_convo_context = self.map_promptname_to_prompt[self.curr_prompt_name]
                 await self.gpt_context_reset()
                 await msg.channel.send("New current prompt set to: " + self.curr_prompt_name)
                 return
@@ -373,19 +486,8 @@ class BMO:
 
         # show available prompts as (ind. prompt)
         if usr_msg == "show prompts":
-            x = "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
-            await msg.channel.send(x) 
+            await self.send_msg_to_usr(msg, self.get_all_gpt_prompts_as_str())
             return 
-
-        if usr_msg == "daily reminders":
-            x = "ON" if self.daily_reminders_switch else "OFF"
-            await msg.channel.send(x)
-            return
-
-        if usr_msg == "daily reminders toggle":
-            self.daily_reminders_switch = False if self.daily_reminders_switch else True
-            await msg.channel.send(f"Set to: {'ON' if self.daily_reminders_switch else 'OFF'}")
-            return
 
         # gpt3 repl settings
         if usr_msg == "gptreplsettings":
@@ -421,18 +523,19 @@ class BMO:
         
         # show the current thread
         if usr_msg == "show thread":
-            await self.send_msg_to_usr(msg, self.curr_convo_context)
+            curr_thread = await self.get_curr_gpt_thread()
+            await self.send_msg_to_usr(msg, curr_thread)
             return
 
         # reset the current convo with the curr prompt context
         if usr_msg == "reset thread":
             await self.gpt_context_reset()
-            await msg.channel.send(f"Thread Reset. Starting with (prompt) convo len = {len(self.curr_convo_context)}")
+            await msg.channel.send(f"Thread Reset. Starting with (prompt) convo len = {len(await self.get_curr_gpt_thread())}")
             return
         
         # check curr convo context length
         if usr_msg == "convo len":
-            await msg.channel.send(len(self.curr_convo_context))
+            await msg.channel.send(len(await self.get_curr_gpt_thread()))
             return
 
         # Reminders based on a time
@@ -505,6 +608,23 @@ class BMO:
                 await self.personal_assistant_block(msg, usr_msg)
                 return
 
+            ############################## GPT 3 ##############################
+            # if sent in GPT_CHANNEL3, send back a GPT3 response
+            if channel == self.gpt3_channel_name:
+                gpt_response = await self.gen_gpt3(usr_msg)
+                formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
+                self.gpt3_settings["messages"][0].append(formatted_response)
+                await self.send_msg_to_usr(msg, gpt_response)
+                return
+
+            ############################## GPT GPT ##############################
+            #TODO: try to get gpt to program gpt to do things in cycles/iteratively.
+            # wonder how i will store states.
+            if channel == self.gpt_gpt_channel_name:
+                await self.send_msg_to_usr(msg, "WIP")
+                return
+
+            
             ############################## StableDiffusion ##############################
 
             # enable stablediffusion if you have a gpu (did not write for cpu)
@@ -518,11 +638,8 @@ class BMO:
                 return
 
             ############################## GPT 3 REPL ##############################
-            # enabled! confirmation is done through the same channel
             if channel == self.gpt3_repl_channel_name:
-                
                 await self.send_msg_to_usr(msg, "GPT3 REPL is currently disabled.")
-                
                 # if self.gpt3_repl_waiting_on_code_confirmation == False:
                 #     self.gpt3_repl_waiting_on_code_confirmation = True
                 #     # show user the code that was generated, want confirmation to run or not
@@ -534,17 +651,7 @@ class BMO:
                 #     await msg.channel.send(await self.gen_gpt3_repl_step_two(usr_msg))
                 return
 
-            ############################## GPT 3 ##############################
-            # if sent in GPT_CHANNEL3, send back a GPT3 response
-            if channel == self.gpt3_channel_name:
-                gpt_response = await self.gen_gpt3(usr_msg)
-                formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
-                # update the str representation of msg log (not used for generations), to be displayed if asked in PA channel
-                self.curr_convo_context += f"user: {usr_msg}\n"
-                self.curr_convo_context += f"{self.chatgpt_name}: {gpt_response}\n"             
-                self.gpt3_settings["messages"][0].append(formatted_response)
-                await self.send_msg_to_usr(msg, gpt_response)
-                return
+
 
         self.client.run(self.TOKEN)
 
