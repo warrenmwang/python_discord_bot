@@ -329,6 +329,9 @@ class BMO:
         '''
 
         async def _modify_prompts(self, msg : discord.message.Message, usr_msg : str) -> None:
+            '''
+            handles changing the prompts for the personal assistant
+            '''
             if self.personal_assistant_modify_prompts_state == "asked what to do":
                 # check response
                 if usr_msg == "edit":
@@ -342,6 +345,10 @@ class BMO:
                 elif usr_msg == "delete":
                     self.personal_assistant_modify_prompts_state = "delete"
                     await self.send_msg_to_usr(msg, "Ok, which prompt would you like to delete? [enter prompt name]")
+                    return
+                elif usr_msg == "changename":
+                    self.personal_assistant_modify_prompts_state = "changename"
+                    await self.send_msg_to_usr(msg, "Ok, which prompt name would you like to rename? [enter prompt name]")
                     return
                 else:
                     await self.send_msg_to_usr(msg, "Invalid response, please try again.")
@@ -364,7 +371,6 @@ class BMO:
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
-
             if self.personal_assistant_modify_prompts_state == "add":
                 await self.send_msg_to_usr(msg, f"Ok, you said to add '{usr_msg}'...")
                 prompt_name = usr_msg.split("<SEP>")[0]
@@ -390,8 +396,26 @@ class BMO:
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
-            # TODO: add functionality to edit a prompt's name? (currently only have functionality to edit the prompt itself)
-
+            if self.personal_assistant_modify_prompts_state == "changename":
+                await self.send_msg_to_usr(msg, f"Ok, you said to change the name of '{usr_msg}'...")
+                self.personal_assistant_modify_prompts_buff.append(usr_msg)
+                self.personal_assistant_modify_prompts_state = "changename2"
+                await self.send_msg_to_usr(msg, f"Ok, what would you like to change the name to?")
+                return
+            if self.personal_assistant_modify_prompts_state == "changename2":
+                prompt_name = self.personal_assistant_modify_prompts_buff.pop()
+                new_prompt_name = usr_msg
+                prompt = self.map_promptname_to_prompt[prompt_name]
+                del self.map_promptname_to_prompt[prompt_name]
+                self.map_promptname_to_prompt[new_prompt_name] = prompt
+                # write the new prompts to file
+                with open(self.gpt_prompts_file, "w") as f:
+                    for k,v in self.map_promptname_to_prompt.items():
+                        f.write(f"{k}<SEP>{v}\n")
+                await self.send_msg_to_usr(msg, f"Changed '{prompt_name}' to '{new_prompt_name}'")
+                self.personal_assistant_state = None
+                self.personal_assistant_modify_prompts_state = None
+                return
 
         if self.personal_assistant_state == "modify prompts":
             await _modify_prompts(self, msg, usr_msg)
@@ -469,7 +493,7 @@ class BMO:
             if self.personal_assistant_state is None:
                 self.personal_assistant_state = "modify prompts"
                 self.personal_assistant_modify_prompts_state = "asked what to do" 
-                await self.send_msg_to_usr(msg, f"Do you want to edit an existing prompt, add a new prompt, or delete a prompt? (edit/add/delete)\nThese are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}")
+                await self.send_msg_to_usr(msg, f"Do you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)\nThese are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}")
                 return
 
         # change gpt3 prompt
