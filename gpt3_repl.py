@@ -12,11 +12,10 @@ GPT3_REPL_SCRIPT_FILENAME = os.getenv("GPT3_REPL_SCRIPT_FILENAME")
 GPT3_REPL_OUTTEXT_FILENAME = os.getenv("GPT3_REPL_OUTTEXT_FILENAME")
 GPT3_REPL_ERRTEXT_FILENAME = os.getenv("GPT3_REPL_ERRTEXT_FILENAME")
 
-# settings for writing python script
+# settings for writing python script (codex models are now deprecated as of 03/2023 so.... use chat models)
 GPT3_REPL_SETTINGS = { 
-    "engine": ["code-davinci-002","str"],
+    "model": ["gpt-3.5-turbo","str"],
     "temperature": ["0.0","float"],
-    "max_tokens": ["500","int"],
     "top_p": ["1.0","float"],
     "frequency_penalty": ["0.0", "float"],
     "presence_penalty": ["0.0", "float"],

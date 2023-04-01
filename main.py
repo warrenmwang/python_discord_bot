@@ -9,14 +9,10 @@ import openai
 from dotenv import load_dotenv
 import subprocess
 
-# testing voice
-# import speech_recognition as sr
-# import threading
-
-from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two, GPT3_REPL_SETTINGS
+# I'm killing off the gpt repl for now, i don't even use it 
+# from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two, GPT3_REPL_SETTINGS
 
 load_dotenv()
-
 
 class BMO:
     def __init__(self):
@@ -29,12 +25,8 @@ class BMO:
         self.waifu_diffusion_script = os.getenv('WAIFU_DIFFUSION_SCRIPT')
         self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
 
-        # self.my_name = os.getenv('MY_NAME')
-        # self.my_dream = os.getenv('MY_DREAM')
-
-        # different api keys
+        # API Keys
         self.GPT3_OPENAI_API_KEY = os.getenv("GPT3_OPENAI_API_KEY")
-        self.CODEX_OPENAI_API_KEY = os.getenv("CODEX_OPENAI_API_KEY")
 
         self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
         self.gpt3_channel_id = os.getenv('GPT3_CHANNEL_ID')
@@ -45,10 +37,16 @@ class BMO:
             "top_p": ["1.0", "float"],
             "frequency_penalty": ["0", "float"],
             "presence_penalty": ["0", "float"],
-            "chatbot_roleplay": ["T", "str"],
+            "max_tokens": ["4096", "int"],
         }
         self.discord_msglen_cap = 2000
         self.chatgpt_name="assistant"
+        self.gpt3_model_to_max_tokens = {
+            "gpt-3.5-turbo": 4096,
+            "gpt-4": 8192,
+            "gpt-4-32k": 32768
+        }
+        self.cmd_prefix = "!"
 
         self.gpt_gpt_channel_name = os.getenv('GPT_GPT_CHANNEL_NAME') 
 
@@ -62,10 +60,6 @@ class BMO:
         self.gpt3_repl_working_prompt_filename = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
         self.gpt3_repl_waiting_on_code_confirmation = False
         self.gpt3_repl_script_filename = os.getenv("GPT3_REPL_SCRIPT_FILENAME")
-
-        # we can have multiple GPT3 convo contexts, init with the roleplay one
-        # self.gpt3_prompt_personal_assistant_file=os.getenv("GPT3_PROMPT_PERSONAL_ASSISTANT_FILE")
-        # self.gpt3_prompt_roleplay_file=os.getenv("GPT3_PROMPT_ROLEPLAY_FILE")
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE")
@@ -125,43 +119,43 @@ class BMO:
 
     ############################## GPT REPL ##############################
 
-    async def gen_gpt3_repl_step_one(self, usr_msg : str) -> str:
-        '''
-        1. try to answer the question immediately
-        2. if cannot, then generate python code and send that to user
-        3. then need to await confirmation to run the code or not (go to step 2 function)
+    # async def gen_gpt3_repl_step_one(self, usr_msg : str) -> str:
+    #     '''
+    #     1. try to answer the question immediately
+    #     2. if cannot, then generate python code and send that to user
+    #     3. then need to await confirmation to run the code or not (go to step 2 function)
 
 
-        receives a str prompt that should be passed into a gpt3 generation under the context
-        that GPT3 is serving as a repl that generates code if needed and provides an answer
-        '''
-        openai.api_key = self.CODEX_OPENAI_API_KEY
-        if (answer_one_question_step_one(usr_msg) == 1):
-            # direct answer is available
-            with open(self.gpt3_repl_working_prompt_filename, "r") as f:
-                tmp = f.readlines()
-                answer = tmp[-1] # get answer (expect one line answers for now)
-            os.unlink(self.gpt3_repl_working_prompt_filename) # cleanup by deleting the working prompt file
-            return answer
-        else:
-            # show to user the python script generated, ask for confirmation before running code
-            ret_str = f"This is the full script:\n==========\n"
-            with open(self.gpt3_repl_script_filename, "r") as f:
-                ret_str += f.read()
-            ret_str += "==========\nDoes this look ok to run? [y/n]"
-            return ret_str
+    #     receives a str prompt that should be passed into a gpt3 generation under the context
+    #     that GPT3 is serving as a repl that generates code if needed and provides an answer
+    #     '''
+    #     openai.api_key = self.CODEX_OPENAI_API_KEY
+    #     if (answer_one_question_step_one(usr_msg) == 1):
+    #         # direct answer is available
+    #         with open(self.gpt3_repl_working_prompt_filename, "r") as f:
+    #             tmp = f.readlines()
+    #             answer = tmp[-1] # get answer (expect one line answers for now)
+    #         os.unlink(self.gpt3_repl_working_prompt_filename) # cleanup by deleting the working prompt file
+    #         return answer
+    #     else:
+    #         # show to user the python script generated, ask for confirmation before running code
+    #         ret_str = f"This is the full script:\n==========\n"
+    #         with open(self.gpt3_repl_script_filename, "r") as f:
+    #             ret_str += f.read()
+    #         ret_str += "==========\nDoes this look ok to run? [y/n]"
+    #         return ret_str
 
-    async def gen_gpt3_repl_step_two(self, usr_msg: str) -> str:
-        '''
-        usr_msg should be either [y/n]
+    # async def gen_gpt3_repl_step_two(self, usr_msg: str) -> str:
+    #     '''
+    #     usr_msg should be either [y/n]
 
-        if y run python script and return the answer
-        if n abort and cleanup
+    #     if y run python script and return the answer
+    #     if n abort and cleanup
 
-        give all this work to the func
-        '''
-        ret_str = answer_one_question_step_two(usr_msg)
-        return ret_str
+    #     give all this work to the func
+    #     '''
+    #     ret_str = answer_one_question_step_two(usr_msg)
+    #     return ret_str
 
     ############################## GPT3 ##############################
     async def gpt_read_prompts_from_file(self) -> None:
@@ -216,7 +210,7 @@ class BMO:
         retrieves a GPT3 response given a string input and a dictionary containing the settings to use
         returns the response str
         '''
-        openai.api_key = self.GPT3_OPENAI_API_KEY
+        
 
         if settings_dict is None:
             settings_dict = self.gpt3_settings
@@ -228,11 +222,9 @@ class BMO:
             model = settings_dict["model"][0],
             messages = settings_dict["messages"][0],
             temperature = float(settings_dict["temperature"][0]),
-            # max_tokens = int(settings_dict["max_tokens"][0]),
             top_p = float(settings_dict["top_p"][0]),
             frequency_penalty = float(settings_dict["frequency_penalty"][0]),
             presence_penalty = float(settings_dict["presence_penalty"][0]),
-            # stop = settings_dict["stop"][0]
         )
         return response['choices'][0]['message']['content']
 
@@ -252,6 +244,10 @@ class BMO:
         tmp = usr_msg.split()
         setting, new_val = tmp[1], tmp[2]
         gpt3_settings[setting][0] = new_val # always gonna store str
+
+        # if setting a new model, update the max_tokens
+        if setting == "model":
+            gpt3_settings["max_tokens"][0] = self.gpt3_model_to_max_tokens[new_val]
 
     def get_all_gpt_prompts_as_str(self):
         '''
@@ -421,6 +417,20 @@ class BMO:
             await _modify_prompts(self, msg, usr_msg)
             return
 
+        # alpaca
+        if usr_msg[:6].lower() == "alpaca":
+            prompt = usr_msg[7:]
+
+            # don't generate for empty messages
+            if len(prompt) == 0:
+                await self.send_msg_to_usr(msg, "alpaca got empty message, abort generating response")
+                return
+
+            await self.send_msg_to_usr(msg, f"Generating a response to the prompt: {prompt}")
+            await self.alpaca(msg, prompt)
+            return
+
+        # all commands below this are not case sensitive to the usr_msg so just lowercase it
         usr_msg = usr_msg.lower()
 
         # list all the commands available
@@ -454,24 +464,11 @@ class BMO:
 
         # list available models of interest
         if usr_msg == "list models":
-            await self.send_msg_to_usr(msg, "Available models:\n\
-            gpt-3.5-turbo (4,096 tokens)\n\
-            gpt-4 (8,192 tokens)\n\
-            gpt-4-32k (32,768 tokens)\n")
+            tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
+            await self.send_msg_to_usr(msg, f"Available models:\n{tmp}")
             return
         
-        # alpaca
-        if usr_msg[:6] == "alpaca":
-            prompt = usr_msg[7:]
-
-            # don't generate for empty messages
-            if len(prompt) == 0:
-                await self.send_msg_to_usr(msg, "alpaca got empty message, abort generating response")
-                return
-
-            await self.send_msg_to_usr(msg, f"Generating a response to the prompt: {prompt}")
-            await self.alpaca(msg, prompt)
-            return
+        
 
         # # join the voice channel of the user
         # if usr_msg == "join_vc":
@@ -573,12 +570,10 @@ class BMO:
                     remind_time = time * 60
                 elif unit == "h":
                     remind_time = time * 3600
+                elif unit == "d":
+                    remind_time = time * 86400
                 else:
-                    remind_time = -1
-                    
-                if remind_time == -1:
-                    # unclear units (maybe add days ?)
-                    await msg.channel.send("only time units implemented: s, m, h")
+                    await msg.channel.send("only time units implemented: s, m, h, d")
                     return
 
                 await self.send_msg_to_usr(msg, f"Reminder set for '{task}' in {time} {unit}.")
@@ -603,8 +598,8 @@ class BMO:
             When ready, load all looping functions if any.
             '''
             print(f'{self.client.user} running!')
-            # await self.gpt_context_reset()
             await self.gpt_prompt_initializer()
+            openai.api_key = self.GPT3_OPENAI_API_KEY
 
         ########################### ON ANY MSG ############################
 
@@ -632,12 +627,31 @@ class BMO:
                 await self.personal_assistant_block(msg, usr_msg)
                 return
 
-            ############################## GPT 3 ##############################
-            # if sent in GPT_CHANNEL3, send back a GPT3 response
+            ############################## GPT X ##############################
+            # if sent in GPT_CHANNEL, send back a GPTX response
             if channel == self.gpt3_channel_name:
+                # catch if is a command
+                if usr_msg[0] == self.cmd_prefix:
+                    # pass to PA block without the prefix
+                    await self.personal_assistant_block(msg, usr_msg[1:])
+                    return
+
+                # check to see if we are running out of tokens for current msg log
+                # get the current thread length
+                curr_thread = await self.get_curr_gpt_thread()
+                curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
+                while curr_thread_len_in_tokens > int(self.gpt3_settings["max_tokens"][0]):
+                    # remove the 2nd oldest message from the thread (first oldest is the prompt)
+                    self.gpt3_settings["messages"][0].pop(1)
+                
+                # use usr_msg to generate new response from API
                 gpt_response = await self.gen_gpt3(usr_msg)
+
+                # reformat to put into messages list for future context, and save
                 formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
                 self.gpt3_settings["messages"][0].append(formatted_response)
+
+                # send the response to the user
                 await self.send_msg_to_usr(msg, gpt_response)
                 return
 
@@ -647,7 +661,6 @@ class BMO:
             if channel == self.gpt_gpt_channel_name:
                 await self.send_msg_to_usr(msg, "WIP")
                 return
-
             
             ############################## StableDiffusion ##############################
 
@@ -663,7 +676,7 @@ class BMO:
 
             ############################## GPT 3 REPL ##############################
             if channel == self.gpt3_repl_channel_name:
-                await self.send_msg_to_usr(msg, "GPT3 REPL is currently disabled.")
+                await self.send_msg_to_usr(msg, "GPT3 REPL is deprecated...I see no point in this existing...for now.")
                 # if self.gpt3_repl_waiting_on_code_confirmation == False:
                 #     self.gpt3_repl_waiting_on_code_confirmation = True
                 #     # show user the code that was generated, want confirmation to run or not
@@ -675,10 +688,7 @@ class BMO:
                 #     await msg.channel.send(await self.gen_gpt3_repl_step_two(usr_msg))
                 return
 
-
-
         self.client.run(self.TOKEN)
-
 
 if __name__ == "__main__":
     bot = BMO()
