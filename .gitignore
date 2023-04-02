@@ -2,6 +2,7 @@
 __pycache__*
 private/
 tmp/
+pickled_threads/
 runme.sh
 .dockerignore
 Anaconda3-2022.10-Linux-x86_64.sh

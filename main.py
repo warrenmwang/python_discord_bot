@@ -1,13 +1,9 @@
-import discord
-from discord.ext import tasks
-from discord import FFmpegPCMAudio
-import asyncio
-import shlex
-from datetime import datetime
-import os
-import openai
+import discord, asyncio, shlex, os, openai
+# from discord.ext import tasks
+# from discord import FFmpegPCMAudio
 from dotenv import load_dotenv
 import subprocess
+import pickle, time
 
 # I'm killing off the gpt repl for now, i don't even use it 
 # from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two, GPT3_REPL_SETTINGS
@@ -210,7 +206,6 @@ class BMO:
         retrieves a GPT3 response given a string input and a dictionary containing the settings to use
         returns the response str
         '''
-        
 
         if settings_dict is None:
             settings_dict = self.gpt3_settings
@@ -412,10 +407,19 @@ class BMO:
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
+        
 
         if self.personal_assistant_state == "modify prompts":
             await _modify_prompts(self, msg, usr_msg)
             return
+
+        # convo len
+        async def get_curr_convo_len_and_approx_tokens(self) -> str:
+            '''
+            returns a string of the current length of the conversation and the approximate number of tokens
+            '''
+            tmp = len(await self.get_curr_gpt_thread())
+            return f"len:{tmp} | tokens: ~{tmp/4}"
 
         # alpaca
         if usr_msg[:6].lower() == "alpaca":
@@ -452,7 +456,11 @@ class BMO:
             change prompt, [new prompt]: change prompt to the specified prompt(NOTE: resets entire message thread)\n\
             show prompts: show the available prompts for gpt3\n\
             list models: list the available gpt models\n\
-            modify prompts: modify the prompts for gpt\n\n\
+            modify prompts: modify the prompts for gpt\n\
+            save thread: save the current gptX thread to a file\n\
+            show old threads: show the old threads that have been saved\n\
+            load thread [unique id]: load a gptX thread from a file\n\
+            delete thread [unique id]: delete a gptX thread from a file\n\n\
             \
             Voice Channel:\n\n\
             Local LLMs:\n\
@@ -461,14 +469,64 @@ class BMO:
             "
             await msg.channel.send(help_str)
             return
+        
+        # save current msg log to file 
+        if usr_msg == "save thread":
+            global time
+            # pickle the current thread from gptsettings["messages"][0]
+            msgs_to_save = self.gpt3_settings["messages"][0]
+            # grab current time in nanoseconds
+            curr_time = time.time()
+            # pickle the msgs_to_save and name it the current time
+            with open(f"./pickled_threads/{curr_time}.pkl", "wb") as f:
+                pickle.dump(msgs_to_save, f)
+            await self.send_msg_to_usr(msg, f"Saved thread to file as {curr_time}.pkl")
+            return
+
+        # show old threads that have been saved
+        if usr_msg == "show old threads":
+            # for now, list all the threads...
+            for filename in os.listdir("./pickled_threads"):
+                # read the file and unpickle it
+                with open(f"./pickled_threads/{filename}", "rb") as f:
+                    msgs_to_load = pickle.load(f)
+                    await self.send_msg_to_usr(msg, f"Thread {filename}:\n{msgs_to_load}\n\n")
+            return
+
+        # load msg log from file
+        if usr_msg[:11] == "load thread":
+            thread_id = usr_msg[12:].strip()
+
+            if len(thread_id) == 0:
+                await self.send_msg_to_usr(msg, "No thread id specified")
+                return
+
+            # read the file and unpickle it
+            with open(f"./pickled_threads/{thread_id}.pkl", "rb") as f:
+                msgs_to_load = pickle.load(f)
+                # set the current gptsettings messages to this 
+                self.gpt3_settings["messages"][0] = msgs_to_load
+            await self.send_msg_to_usr(msg, f"Loaded thread {thread_id}.pkl") 
+            return
+        
+        # delete a saved thread
+        if usr_msg[:13] == "delete thread":
+            thread_id = usr_msg[14:].strip()
+
+            if len(thread_id) == 0:
+                await self.send_msg_to_usr(msg, "No thread id specified")
+                return
+
+            # delete the file
+            os.remove(f"./pickled_threads/{thread_id}.pkl")
+            await self.send_msg_to_usr(msg, f"Deleted thread {thread_id}.pkl")
+            return
 
         # list available models of interest
         if usr_msg == "list models":
             tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
             await self.send_msg_to_usr(msg, f"Available models:\n{tmp}")
             return
-        
-        
 
         # # join the voice channel of the user
         # if usr_msg == "join_vc":
@@ -510,10 +568,10 @@ class BMO:
             await self.send_msg_to_usr(msg, self.get_all_gpt_prompts_as_str())
             return 
 
-        # gpt3 repl settings
-        if usr_msg == "gptreplsettings":
-            await self.gptsettings(msg, GPT3_REPL_SETTINGS)
-            return
+        # # gpt3 repl settings
+        # if usr_msg == "gptreplsettings":
+        #     await self.gptsettings(msg, GPT3_REPL_SETTINGS)
+        #     return
 
         # show user current GPT3 settings
         if usr_msg == "gptsettings":
@@ -531,16 +589,16 @@ class BMO:
                 await msg.channel.send("gptset: gptset [setting_name] [new_value]")
             return
         
-        # modify GPT3repl settings
-        if usr_msg[:10] == "gptreplset":
-            ''' expect format: gptreplset [setting_name] [new_value]'''
-            try:
-                await self.gptset(usr_msg, GPT3_REPL_SETTINGS)
-                await msg.channel.send("New parameter saved, current settings:")
-                await self.gptsettings(msg, GPT3_REPL_SETTINGS)
-            except Exception as e:
-                await msg.channel.send("gptset: gptset [setting_name] [new_value]")
-            return
+        # # modify GPT3repl settings
+        # if usr_msg[:10] == "gptreplset":
+        #     ''' expect format: gptreplset [setting_name] [new_value]'''
+        #     try:
+        #         await self.gptset(usr_msg, GPT3_REPL_SETTINGS)
+        #         await msg.channel.send("New parameter saved, current settings:")
+        #         await self.gptsettings(msg, GPT3_REPL_SETTINGS)
+        #     except Exception as e:
+        #         await msg.channel.send("gptset: gptset [setting_name] [new_value]")
+        #     return
         
         # show the current thread
         if usr_msg == "show thread":
@@ -551,12 +609,12 @@ class BMO:
         # reset the current convo with the curr prompt context
         if usr_msg == "reset thread":
             await self.gpt_context_reset()
-            await msg.channel.send(f"Thread Reset. Starting with (prompt) convo len = {len(await self.get_curr_gpt_thread())}")
+            await msg.channel.send(f"Thread Reset. {await get_curr_convo_len_and_approx_tokens(self)}")
             return
         
         # check curr convo context length
         if usr_msg == "convo len":
-            await msg.channel.send(len(await self.get_curr_gpt_thread()))
+            await self.send_msg_to_usr(msg, await get_curr_convo_len_and_approx_tokens(self))
             return
 
         # Reminders based on a time
