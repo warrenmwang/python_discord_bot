@@ -58,7 +58,7 @@ class BMO:
         self.gpt3_repl_script_filename = os.getenv("GPT3_REPL_SCRIPT_FILENAME")
 
         # gpt prompts
-        self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE")
+        self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
         self.all_gpt3_available_prompts = None # list of all prompt names
         self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
@@ -154,25 +154,28 @@ class BMO:
     #     return ret_str
 
     ############################## GPT3 ##############################
+
+    def gpt_save_prompts_to_file(self) -> None:
+        '''
+        saves the prompt_name -> prompt dictionary to disk via pickling
+        '''
+        with open(self.gpt_prompts_file, "wb") as f:
+            pickle.dump(self.map_promptname_to_prompt, f, protocol=pickle.HIGHEST_PROTOCOL)
+
     async def gpt_read_prompts_from_file(self) -> None:
         '''
         reads all the prompts from the prompt file and stores them in self.all_gpt3_available_prompts and the mapping
         '''
         # reset curr state of prompts
-        self.all_gpt3_available_prompts = []
-        self.map_promptname_to_prompt = {}
+        self.all_gpt3_available_prompts = [] # prompt names
+        self.map_promptname_to_prompt = {} # prompt name -> prompt
 
         # load in all the prompts
-        with open(self.gpt_prompts_file, "r") as f:
-            lines = f.readlines()
-            
-            # format is each line has [prompt_name] [prompt], the separator is <SEP>
-            for line in lines:
-                line = line.strip()
-                prompt_name = line.split("<SEP>")[0]
-                prompt = line.split("<SEP>")[1]
-                self.all_gpt3_available_prompts.append(prompt_name)
-                self.map_promptname_to_prompt[prompt_name] = prompt
+        with open(self.gpt_prompts_file, "rb") as f:
+            # load in the pickled object
+            self.map_promptname_to_prompt = pickle.load(f)
+            # get the list of prompts
+            self.all_gpt3_available_prompts = list(self.map_promptname_to_prompt.keys())
 
     async def gpt_prompt_initializer(self) -> None:
         '''
@@ -319,10 +322,42 @@ class BMO:
         Custom commands that do a particular hard-coded thing.
         '''
 
+        def shortcut_cmd_convertor(usr_msg :str) -> str:
+            '''
+            if the user enters a shortcut command, convert it to the actual command
+            '''
+            if usr_msg == "rt":
+                return "reset thread"
+            if usr_msg == "cl":
+                return "convo len"
+            if usr_msg == "st": 
+                return "show thread"
+            if usr_msg[:2] == "cp":
+                return "change prompt" + usr_msg[1:]
+            if usr_msg == "save":
+                return "save thread"
+            if usr_msg[:4] == "load":
+                return "load thread" + usr_msg[3:]
+            if usr_msg == "lm":
+                return "list models"
+
+            # not a shortcut command
+            return usr_msg
+
         async def _modify_prompts(self, msg : discord.message.Message, usr_msg : str) -> None:
             '''
             handles changing the prompts for the personal assistant
             '''
+            # user can cancel at any time
+            if usr_msg == "cancel":
+                # cancel modifying any prompts
+                self.personal_assistant_state = None
+                self.personal_assistant_modify_prompts_state = None
+                self.personal_assistant_modify_prompts_buff = []
+                await self.send_msg_to_usr(msg, "Ok, cancelling.")
+                return
+
+            # Stage 1: usr picks a operator
             if self.personal_assistant_modify_prompts_state == "asked what to do":
                 # check response
                 if usr_msg == "edit":
@@ -344,6 +379,8 @@ class BMO:
                 else:
                     await self.send_msg_to_usr(msg, "Invalid response, please try again.")
                     return
+
+            # Stage 2: usr provides more info for an already chosen operator
             if self.personal_assistant_modify_prompts_state == "edit":
                 await self.send_msg_to_usr(msg, f"Ok, you said to edit {usr_msg}.\nSend me the new prompt for this prompt name. (just the new prompt in its entirety)")
                 self.personal_assistant_modify_prompts_buff.append(usr_msg)
@@ -354,10 +391,7 @@ class BMO:
                 prompt_name = self.personal_assistant_modify_prompts_buff.pop()
                 new_prompt = usr_msg
                 self.map_promptname_to_prompt[prompt_name] = new_prompt
-                # write the new prompts to file
-                with open(self.gpt_prompts_file, "w") as f:
-                    for k,v in self.map_promptname_to_prompt.items():
-                        f.write(f"{k}<SEP>{v}\n")
+                self.gpt_save_prompts_to_file() # write the new prompts to file
                 await self.send_msg_to_usr(msg, f"Updated '{prompt_name}' to '{new_prompt}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
@@ -367,10 +401,7 @@ class BMO:
                 prompt_name = usr_msg.split("<SEP>")[0]
                 prompt = usr_msg.split("<SEP>")[1]
                 self.map_promptname_to_prompt[prompt_name] = prompt
-                # write the new prompts to file
-                with open(self.gpt_prompts_file, "w") as f:
-                    for k,v in self.map_promptname_to_prompt.items():
-                        f.write(f"{k}<SEP>{v}\n")
+                self.gpt_save_prompts_to_file() # write the new prompts to file
                 await self.send_msg_to_usr(msg, f"Added '{prompt_name}' with prompt '{prompt}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
@@ -379,19 +410,15 @@ class BMO:
                 await self.send_msg_to_usr(msg, f"Ok, you said to delete '{usr_msg}'...")
                 prompt_name = usr_msg
                 del self.map_promptname_to_prompt[prompt_name]
-                # write the new prompts to file
-                with open(self.gpt_prompts_file, "w") as f:
-                    for k,v in self.map_promptname_to_prompt.items():
-                        f.write(f"{k}<SEP>{v}\n")
+                self.gpt_save_prompts_to_file() # write the new prompts to file
                 await self.send_msg_to_usr(msg, f"Deleted '{prompt_name}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
             if self.personal_assistant_modify_prompts_state == "changename":
-                await self.send_msg_to_usr(msg, f"Ok, you said to change the name of '{usr_msg}'...")
                 self.personal_assistant_modify_prompts_buff.append(usr_msg)
                 self.personal_assistant_modify_prompts_state = "changename2"
-                await self.send_msg_to_usr(msg, f"Ok, what would you like to change the name to?")
+                await self.send_msg_to_usr(msg, f"Ok, what would you like to change the {usr_msg} to?")
                 return
             if self.personal_assistant_modify_prompts_state == "changename2":
                 prompt_name = self.personal_assistant_modify_prompts_buff.pop()
@@ -399,16 +426,13 @@ class BMO:
                 prompt = self.map_promptname_to_prompt[prompt_name]
                 del self.map_promptname_to_prompt[prompt_name]
                 self.map_promptname_to_prompt[new_prompt_name] = prompt
-                # write the new prompts to file
-                with open(self.gpt_prompts_file, "w") as f:
-                    for k,v in self.map_promptname_to_prompt.items():
-                        f.write(f"{k}<SEP>{v}\n")
+                self.gpt_save_prompts_to_file() # write the new prompts to file
                 await self.send_msg_to_usr(msg, f"Changed '{prompt_name}' to '{new_prompt_name}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
         
-
+        # handle personal assistant state (if any)
         if self.personal_assistant_state == "modify prompts":
             await _modify_prompts(self, msg, usr_msg)
             return
@@ -420,6 +444,9 @@ class BMO:
             '''
             tmp = len(await self.get_curr_gpt_thread())
             return f"len:{tmp} | tokens: ~{tmp/4}"
+        
+        # convert shortcut to full command if present
+        usr_msg = shortcut_cmd_convertor(usr_msg)
 
         # alpaca
         if usr_msg[:6].lower() == "alpaca":
@@ -479,7 +506,7 @@ class BMO:
             curr_time = time.time()
             # pickle the msgs_to_save and name it the current time
             with open(f"./pickled_threads/{curr_time}.pkl", "wb") as f:
-                pickle.dump(msgs_to_save, f)
+                pickle.dump(msgs_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
             await self.send_msg_to_usr(msg, f"Saved thread to file as {curr_time}.pkl")
             return
 
@@ -548,7 +575,7 @@ class BMO:
             if self.personal_assistant_state is None:
                 self.personal_assistant_state = "modify prompts"
                 self.personal_assistant_modify_prompts_state = "asked what to do" 
-                await self.send_msg_to_usr(msg, f"Do you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)\nThese are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}")
+                await self.send_msg_to_usr(msg, f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)")
                 return
 
         # change gpt3 prompt
