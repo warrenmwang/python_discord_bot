@@ -1,27 +1,14 @@
 import discord, asyncio, shlex, os, openai
-# from discord.ext import tasks
-# from discord import FFmpegPCMAudio
+import subprocess, pickle, time
 from dotenv import load_dotenv
-import subprocess
-import pickle, time
-
-# I'm killing off the gpt repl for now, i don't even use it 
-# from gpt3_repl import answer_one_question_step_one, answer_one_question_step_two, GPT3_REPL_SETTINGS
 
 load_dotenv()
 
 class BMO:
     def __init__(self):
         ############################## vals needed ##############################
+        # api keys
         self.TOKEN = os.getenv('DISCORD_TOKEN')
-
-        self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
-        self.stable_diffusion_script = os.getenv('STABLE_DIFFUSION_SCRIPT')
-        self.waifu_diffusion_channel = os.getenv('WAIFU_DIFFUSION_CHANNEL')
-        self.waifu_diffusion_script = os.getenv('WAIFU_DIFFUSION_SCRIPT')
-        self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
-
-        # API Keys
         self.GPT3_OPENAI_API_KEY = os.getenv("GPT3_OPENAI_API_KEY")
 
         self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
@@ -46,16 +33,10 @@ class BMO:
 
         self.gpt_gpt_channel_name = os.getenv('GPT_GPT_CHANNEL_NAME') 
 
-        self.daily_reminders_switch = False # initially off
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
         self.personal_assistant_modify_prompts_buff = []
-
-        self.gpt3_repl_channel_name = os.getenv("GPT3_REPL_CHANNEL_NAME")
-        self.gpt3_repl_working_prompt_filename = os.getenv("GPT3_REPL_WORKING_PROMPT_FILENAME")
-        self.gpt3_repl_waiting_on_code_confirmation = False
-        self.gpt3_repl_script_filename = os.getenv("GPT3_REPL_SCRIPT_FILENAME")
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
@@ -67,91 +48,6 @@ class BMO:
 
         self.intents = discord.Intents.all()
         self.client = discord.Client(intents=self.intents)
-
-    ############################## STABLE DIFFUSION ##############################
-
-    async def gen_stable_diffusion(self, msg : discord.message.Message, usr_msg : str, chnl_num : int) -> None:
-        '''
-        takes in usr_msg as the prompt (and generation params, don't need to include outdir, automatically added)
-        and generate image(s) using stablediffusion, then send them back to the user
-        '''
-        # first generate image(s)
-        if chnl_num == 1:
-            # stable diffusion
-            cmd = f"{self.stable_diffusion_script} \"{usr_msg}\""
-        else:
-            # waifu diffusion
-            cmd = f"{self.waifu_diffusion_script} \"{usr_msg}\""
-
-        try:
-            subprocess.run(cmd, shell=True)
-        except Exception as e:
-            await msg.channel.send(f"StableDiffusion: got error on subprocess: {e}")
-            return
-
-        # get generated image(s), if any
-        imgs_to_send = []
-        for file in os.listdir(self.stable_diffusion_output_dir):
-            file_path = os.path.join(self.stable_diffusion_output_dir, file)
-            if file_path[-4:] == ".png":
-                imgs_to_send.append(file_path)
-        # if no images were generated, send notify usr
-        if len(imgs_to_send) == 0:
-            await msg.channel.send(f"StableDiffusion: no images generated (probably CUDA out of memory)")
-        else:
-            # have images, send them
-            for img in imgs_to_send:
-                await msg.channel.send(file=discord.File(img))
-
-        # delete all png files in outputdir
-        for file in os.listdir(self.stable_diffusion_output_dir):
-            file_path = os.path.join(self.stable_diffusion_output_dir, file)
-            try:
-                if file_path[-4:] == ".png":
-                    if os.path.isfile(file_path) or os.path.islink(file_path):
-                        os.unlink(file_path)
-            except Exception as e:
-                await msg.channel.send("something went wrong in cleanup procedure in stable diffusion")
-
-    ############################## GPT REPL ##############################
-
-    # async def gen_gpt3_repl_step_one(self, usr_msg : str) -> str:
-    #     '''
-    #     1. try to answer the question immediately
-    #     2. if cannot, then generate python code and send that to user
-    #     3. then need to await confirmation to run the code or not (go to step 2 function)
-
-
-    #     receives a str prompt that should be passed into a gpt3 generation under the context
-    #     that GPT3 is serving as a repl that generates code if needed and provides an answer
-    #     '''
-    #     openai.api_key = self.CODEX_OPENAI_API_KEY
-    #     if (answer_one_question_step_one(usr_msg) == 1):
-    #         # direct answer is available
-    #         with open(self.gpt3_repl_working_prompt_filename, "r") as f:
-    #             tmp = f.readlines()
-    #             answer = tmp[-1] # get answer (expect one line answers for now)
-    #         os.unlink(self.gpt3_repl_working_prompt_filename) # cleanup by deleting the working prompt file
-    #         return answer
-    #     else:
-    #         # show to user the python script generated, ask for confirmation before running code
-    #         ret_str = f"This is the full script:\n==========\n"
-    #         with open(self.gpt3_repl_script_filename, "r") as f:
-    #             ret_str += f.read()
-    #         ret_str += "==========\nDoes this look ok to run? [y/n]"
-    #         return ret_str
-
-    # async def gen_gpt3_repl_step_two(self, usr_msg: str) -> str:
-    #     '''
-    #     usr_msg should be either [y/n]
-
-    #     if y run python script and return the answer
-    #     if n abort and cleanup
-
-    #     give all this work to the func
-    #     '''
-    #     ret_str = answer_one_question_step_two(usr_msg)
-    #     return ret_str
 
     ############################## GPT3 ##############################
 
@@ -267,7 +163,7 @@ class BMO:
             end += self.discord_msglen_cap
             diff -= self.discord_msglen_cap
 
-    ###### Voice Channel ######
+    ###### Voice Channel (WIP) ######
 
     # async def join_vc(self, msg : discord.message.Message) -> None:
     #     '''
@@ -322,7 +218,9 @@ class BMO:
         Custom commands that do a particular hard-coded thing.
         '''
 
-        def shortcut_cmd_convertor(usr_msg :str) -> str:
+        ######## PA funcs ########
+
+        def _pa_shortcut_cmd_convertor(usr_msg :str) -> str:
             '''
             if the user enters a shortcut command, convert it to the actual command
             '''
@@ -344,7 +242,7 @@ class BMO:
             # not a shortcut command
             return usr_msg
 
-        async def _modify_prompts(self, msg : discord.message.Message, usr_msg : str) -> None:
+        async def _pa_modify_prompts(self, msg : discord.message.Message, usr_msg : str) -> None:
             '''
             handles changing the prompts for the personal assistant
             '''
@@ -432,21 +330,34 @@ class BMO:
                 self.personal_assistant_modify_prompts_state = None
                 return
         
-        # handle personal assistant state (if any)
-        if self.personal_assistant_state == "modify prompts":
-            await _modify_prompts(self, msg, usr_msg)
-            return
-
         # convo len
-        async def get_curr_convo_len_and_approx_tokens(self) -> str:
+        async def _pa_get_curr_convo_len_and_approx_tokens(self) -> str:
             '''
             returns a string of the current length of the conversation and the approximate number of tokens
             '''
             tmp = len(await self.get_curr_gpt_thread())
             return f"len:{tmp} | tokens: ~{tmp/4}"
         
+        # changing gptsettings
+        async def _pa_gptset(self, msg, usr_msg):
+            ''' expect format: gptset [setting_name] [new_value]'''
+            try:
+                await self.gptset(usr_msg, self.gpt3_settings)
+                await msg.channel.send("New parameter saved, current settings:")
+                await self.gptsettings(msg, self.gpt3_settings)
+            except Exception as e:
+                await msg.channel.send("gptset: gptset [setting_name] [new_value]")
+            return
+
+        ############################
+
+        # handle personal assistant state (if any)
+        if self.personal_assistant_state == "modify prompts":
+            await _pa_modify_prompts(self, msg, usr_msg)
+            return
+
         # convert shortcut to full command if present
-        usr_msg = shortcut_cmd_convertor(usr_msg)
+        usr_msg = _pa_shortcut_cmd_convertor(usr_msg)
 
         # alpaca
         if usr_msg[:6].lower() == "alpaca":
@@ -487,8 +398,8 @@ class BMO:
             save thread: save the current gptX thread to a file\n\
             show old threads: show the old threads that have been saved\n\
             load thread [unique id]: load a gptX thread from a file\n\
-            delete thread [unique id]: delete a gptX thread from a file\n\n\
-            \
+            delete thread [unique id]: delete a gptX thread from a file\n\
+            swap: swap between gpt3.5 and gpt4 (regular)\n\n\
             Voice Channel:\n\n\
             Local LLMs:\n\
             Alpaca:\n\
@@ -497,6 +408,15 @@ class BMO:
             await msg.channel.send(help_str)
             return
         
+        # swap between gpt3.5 and gpt4
+        if usr_msg == "swap":
+            curr_model = self.gpt3_settings["model"][0]
+            if curr_model == "gpt-3.5-turbo":
+                await _pa_gptset(self, msg, "gptset model gpt-4")
+            else:
+                await _pa_gptset(self, msg, "gptset model gpt-3.5-turbo")
+            return
+
         # save current msg log to file 
         if usr_msg == "save thread":
             global time
@@ -555,6 +475,7 @@ class BMO:
             await self.send_msg_to_usr(msg, f"Available models:\n{tmp}")
             return
 
+        # TODO: try whisper with discord voice? 
         # # join the voice channel of the user
         # if usr_msg == "join_vc":
         #     await self.join_vc(msg)
@@ -595,11 +516,6 @@ class BMO:
             await self.send_msg_to_usr(msg, self.get_all_gpt_prompts_as_str())
             return 
 
-        # # gpt3 repl settings
-        # if usr_msg == "gptreplsettings":
-        #     await self.gptsettings(msg, GPT3_REPL_SETTINGS)
-        #     return
-
         # show user current GPT3 settings
         if usr_msg == "gptsettings":
             await self.gptsettings(msg, self.gpt3_settings)
@@ -607,25 +523,8 @@ class BMO:
 
         # user wants to modify GPT3 settings
         if usr_msg[0:6] == "gptset":
-            ''' expect format: gptset [setting_name] [new_value]'''
-            try:
-                await self.gptset(usr_msg, self.gpt3_settings)
-                await msg.channel.send("New parameter saved, current settings:")
-                await self.gptsettings(msg, self.gpt3_settings)
-            except Exception as e:
-                await msg.channel.send("gptset: gptset [setting_name] [new_value]")
-            return
-        
-        # # modify GPT3repl settings
-        # if usr_msg[:10] == "gptreplset":
-        #     ''' expect format: gptreplset [setting_name] [new_value]'''
-        #     try:
-        #         await self.gptset(usr_msg, GPT3_REPL_SETTINGS)
-        #         await msg.channel.send("New parameter saved, current settings:")
-        #         await self.gptsettings(msg, GPT3_REPL_SETTINGS)
-        #     except Exception as e:
-        #         await msg.channel.send("gptset: gptset [setting_name] [new_value]")
-        #     return
+            await _pa_gptset(self, msg, usr_msg)
+            return 
         
         # show the current thread
         if usr_msg == "show thread":
@@ -636,12 +535,12 @@ class BMO:
         # reset the current convo with the curr prompt context
         if usr_msg == "reset thread":
             await self.gpt_context_reset()
-            await msg.channel.send(f"Thread Reset. {await get_curr_convo_len_and_approx_tokens(self)}")
+            await msg.channel.send(f"Thread Reset. {await _pa_get_curr_convo_len_and_approx_tokens(self)}")
             return
         
         # check curr convo context length
         if usr_msg == "convo len":
-            await self.send_msg_to_usr(msg, await get_curr_convo_len_and_approx_tokens(self))
+            await self.send_msg_to_usr(msg, await _pa_get_curr_convo_len_and_approx_tokens(self))
             return
 
         # Reminders based on a time
@@ -745,32 +644,6 @@ class BMO:
             # wonder how i will store states.
             if channel == self.gpt_gpt_channel_name:
                 await self.send_msg_to_usr(msg, "WIP")
-                return
-            
-            ############################## StableDiffusion ##############################
-
-            # enable stablediffusion if you have a gpu (did not write for cpu)
-            if channel == self.stable_diffusion_channel:
-                await self.send_msg_to_usr(msg, "Stable Diffusion is currently disabled.")
-                # await self.gen_stable_diffusion(msg, usr_msg, chnl_num=1)
-                return
-            elif channel == self.waifu_diffusion_channel:
-                await self.send_msg_to_usr(msg, "Stable Diffusion is currently disabled.")
-                # await self.gen_stable_diffusion(msg, usr_msg, chnl_num=2)
-                return
-
-            ############################## GPT 3 REPL ##############################
-            if channel == self.gpt3_repl_channel_name:
-                await self.send_msg_to_usr(msg, "GPT3 REPL is deprecated...I see no point in this existing...for now.")
-                # if self.gpt3_repl_waiting_on_code_confirmation == False:
-                #     self.gpt3_repl_waiting_on_code_confirmation = True
-                #     # show user the code that was generated, want confirmation to run or not
-                #     await msg.channel.send(await self.gen_gpt3_repl_step_one(usr_msg))
-                # else:
-                #     # we were waiting for code to be run
-                #     self.gpt3_repl_waiting_on_code_confirmation = False
-                #     # take user input and respond appropriately
-                #     await msg.channel.send(await self.gen_gpt3_repl_step_two(usr_msg))
                 return
 
         self.client.run(self.TOKEN)
