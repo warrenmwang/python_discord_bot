@@ -44,7 +44,7 @@ class BMO:
         self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
 
-        self.allowed_channels = [self.gpt3_channel_name, self.stable_diffusion_channel, self.waifu_diffusion_channel, self.personal_assistant_channel, self.gpt3_repl_channel_name]
+        self.allowed_channels = [self.gpt3_channel_name, self.personal_assistant_channel, self.gpt_gpt_channel_name]
 
         self.intents = discord.Intents.all()
         self.client = discord.Client(intents=self.intents)
