@@ -1,4 +1,5 @@
 import discord, asyncio, shlex, os, openai
+from concurrent.futures import ThreadPoolExecutor
 import subprocess, pickle, time
 from dotenv import load_dotenv
 
@@ -111,22 +112,31 @@ class BMO:
 
         # update log(list) of messages, then use it to query
         settings_dict["messages"][0].append({"role": "user", "content": usr_msg})
-        # query
-        response = openai.ChatCompletion.create(
-            model = settings_dict["model"][0],
-            messages = settings_dict["messages"][0],
-            temperature = float(settings_dict["temperature"][0]),
-            top_p = float(settings_dict["top_p"][0]),
-            frequency_penalty = float(settings_dict["frequency_penalty"][0]),
-            presence_penalty = float(settings_dict["presence_penalty"][0]),
-        )
+
+        def blocking_api_call():
+            # query
+            return openai.ChatCompletion.create(
+                model = settings_dict["model"][0],
+                messages = settings_dict["messages"][0],
+                temperature = float(settings_dict["temperature"][0]),
+                top_p = float(settings_dict["top_p"][0]),
+                frequency_penalty = float(settings_dict["frequency_penalty"][0]),
+                presence_penalty = float(settings_dict["presence_penalty"][0]),
+            )
+        
+        # Run the blocking function in a separate thread using run_in_executor
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            response = await loop.run_in_executor(executor, blocking_api_call)
+
         return response['choices'][0]['message']['content']
 
     async def gptsettings(self, msg : discord.message.Message, gpt3_settings : dict) -> None:
         '''
         prints out all available gpt3 settings, their current values, and their data types
+        excludes the possibly large messages list
         '''
-        await self.send_msg_to_usr(msg, "".join([f"{key} ({gpt3_settings[key][1]}) = {gpt3_settings[key][0]}\n" for key in gpt3_settings.keys()]))
+        await self.send_msg_to_usr(msg, "".join([f"{key} ({gpt3_settings[key][1]}) = {gpt3_settings[key][0]}\n" for key in gpt3_settings.keys() if key != "messages"]))
 
     async def gptset(self, usr_msg : str, gpt3_settings : dict) -> None:
         '''
@@ -238,6 +248,8 @@ class BMO:
                 return "load thread" + usr_msg[3:]
             if usr_msg == "lm":
                 return "list models"
+            if usr_msg == "cm":
+                return "current model"
 
             # not a shortcut command
             return usr_msg
@@ -343,7 +355,6 @@ class BMO:
             ''' expect format: gptset [setting_name] [new_value]'''
             try:
                 await self.gptset(usr_msg, self.gpt3_settings)
-                await msg.channel.send("New parameter saved, current settings:")
                 await self.gptsettings(msg, self.gpt3_settings)
             except Exception as e:
                 await msg.channel.send("gptset: gptset [setting_name] [new_value]")
@@ -399,6 +410,7 @@ class BMO:
             show old threads: show the old threads that have been saved\n\
             load thread [unique id]: load a gptX thread from a file\n\
             delete thread [unique id]: delete a gptX thread from a file\n\
+            current model: show the current gpt model\n\
             swap: swap between gpt3.5 and gpt4 (regular)\n\n\
             Voice Channel:\n\n\
             Local LLMs:\n\
@@ -406,6 +418,11 @@ class BMO:
             alpaca [prompt]: get a response from alpaca\n\
             "
             await msg.channel.send(help_str)
+            return
+        
+        # just show current model
+        if usr_msg == "current model":
+            await msg.channel.send(f"Current model: {self.gpt3_settings['model'][0]}")
             return
         
         # swap between gpt3.5 and gpt4
@@ -437,7 +454,10 @@ class BMO:
                 # read the file and unpickle it
                 with open(f"./pickled_threads/{filename}", "rb") as f:
                     msgs_to_load = pickle.load(f)
-                    await self.send_msg_to_usr(msg, f"Thread {filename}:\n{msgs_to_load}\n\n")
+                    for tmp in msgs_to_load:
+                        tmp_role = tmp["role"]
+                        tmp_msg = tmp["content"]
+                        await self.send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
             return
 
         # load msg log from file
@@ -528,8 +548,12 @@ class BMO:
         
         # show the current thread
         if usr_msg == "show thread":
-            curr_thread = await self.get_curr_gpt_thread()
-            await self.send_msg_to_usr(msg, curr_thread)
+            # curr_thread = await self.get_curr_gpt_thread()
+            # await self.send_msg_to_usr(msg, curr_thread)
+            for tmp in self.gpt3_settings["messages"][0]:
+                tmp_role = tmp["role"]
+                tmp_msg = tmp["content"]
+                await self.send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
             return
 
         # reset the current convo with the curr prompt context
