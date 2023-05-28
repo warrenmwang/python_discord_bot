@@ -1,5 +1,5 @@
 # Discord Bot | Python 3
-*last updated 04/27/2023*
+*last updated 05/27/2023*
 
 ## What does this do?
 Interface for GPT-3.5-turbo / GPT-4 from OpenAI
