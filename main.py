@@ -1,6 +1,6 @@
-import discord, asyncio, shlex, os, openai
+import discord, asyncio, os, openai
 from concurrent.futures import ThreadPoolExecutor
-import subprocess, pickle, time
+import pickle, time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -173,55 +173,6 @@ class BMO:
             end += self.discord_msglen_cap
             diff -= self.discord_msglen_cap
 
-    ###### Voice Channel (WIP) ######
-
-    # async def join_vc(self, msg : discord.message.Message) -> None:
-    #     '''
-    #     joins the voice channel that the user is currently in
-    #     '''
-    #     if msg.author.voice:
-    #         channel = msg.author.voice.channel
-    #         voice = await channel.connect()
-    #         source = FFmpegPCMAudio('nevergonnagiveyouup.m4a')
-    #         player = voice.play(source)
-    #     else:
-    #         await msg.channel.send("You are not in a voice channel")
-
-    # async def leave_vc(self, msg : discord.message.Message) -> None:
-    #     '''
-    #     leaves the voice channel that the bot is currently in
-    #     '''
-    #     if msg.guild.voice_client:
-    #         await msg.guild.voice_client.disconnect()
-    #     else:
-    #         await msg.channel.send("I am not in a voice channel")
-
-    #### Alpaca ####
-    async def alpaca(self, msg : discord.message.Message, usr_msg : str) -> None:
-        ''''
-        generate response using alpaca.cpp 7B model (this laptop is old)
-        and send the reply
-        '''
-        # run the bash script alpaca.sh with the usr_msg as the argument, and get the response in alpaca_response.txt
-        cmd = f"./alpaca.sh {shlex.quote(usr_msg)}"
-        try:
-            # subprocess.run(cmd, shell=True)
-            proc = await asyncio.create_subprocess_shell(cmd)
-            await proc.wait() # Wait for the process to complete
-        except Exception as e:
-            await msg.channel.send(f"alpaca got error: {e}")
-            return
-
-        # read the response from the file
-        with open("./alpaca.cpp/alpaca_response.txt", "r") as f:
-            response = f.read()
-
-        # send the response
-        await self.send_msg_to_usr(msg, f"alpaca: {response}")
-
-        # cleanup
-        os.system("rm ./alpaca.cpp/alpaca_response.txt")
-
     ############################## Personal Assistant ##############################
     async def personal_assistant_block(self, msg : discord.message.Message, usr_msg: str) -> None:
         '''
@@ -244,7 +195,7 @@ class BMO:
                 return "change prompt" + usr_msg[1:]
             if usr_msg == "save":
                 return "save thread"
-            if usr_msg[:4] == "load":
+            if usr_msg[:4] == "load" and usr_msg[5:11] != "thread":
                 return "load thread" + usr_msg[3:]
             if usr_msg == "lm":
                 return "list models"
@@ -412,10 +363,6 @@ class BMO:
             delete thread [unique id]: delete a gptX thread from a file\n\
             current model: show the current gpt model\n\
             swap: swap between gpt3.5 and gpt4 (regular)\n\n\
-            Voice Channel:\n\n\
-            Local LLMs:\n\
-            Alpaca:\n\
-            alpaca [prompt]: get a response from alpaca\n\
             "
             await msg.channel.send(help_str)
             return
@@ -454,6 +401,7 @@ class BMO:
                 # read the file and unpickle it
                 with open(f"./pickled_threads/{filename}", "rb") as f:
                     msgs_to_load = pickle.load(f)
+                    await self.send_msg_to_usr(msg, f"Thread id: {filename}")
                     for tmp in msgs_to_load:
                         tmp_role = tmp["role"]
                         tmp_msg = tmp["content"]
@@ -462,11 +410,14 @@ class BMO:
 
         # load msg log from file
         if usr_msg[:11] == "load thread":
-            thread_id = usr_msg[12:].strip()
+            thread_id = usr_msg.split(" ")[2].strip()
 
             if len(thread_id) == 0:
                 await self.send_msg_to_usr(msg, "No thread id specified")
                 return
+
+            if thread_id[-4:] == ".pkl":
+                thread_id = thread_id[:-4]
 
             # read the file and unpickle it
             with open(f"./pickled_threads/{thread_id}.pkl", "rb") as f:
@@ -495,17 +446,6 @@ class BMO:
             await self.send_msg_to_usr(msg, f"Available models:\n{tmp}")
             return
 
-        # TODO: try whisper with discord voice? 
-        # # join the voice channel of the user
-        # if usr_msg == "join_vc":
-        #     await self.join_vc(msg)
-        #     return
-
-        # # leave the voice channel of the bot
-        # if usr_msg == "leave_vc":
-        #     await self.leave_vc(msg)
-        #     return
-        
         # show the current gpt3 prompt
         if usr_msg == "curr prompt":
             await msg.channel.send(self.curr_prompt_name)
@@ -661,13 +601,6 @@ class BMO:
 
                 # send the response to the user
                 await self.send_msg_to_usr(msg, gpt_response)
-                return
-
-            ############################## GPT GPT ##############################
-            #TODO: try to get gpt to program gpt to do things in cycles/iteratively.
-            # wonder how i will store states.
-            if channel == self.gpt_gpt_channel_name:
-                await self.send_msg_to_usr(msg, "WIP")
                 return
 
         self.client.run(self.TOKEN)
