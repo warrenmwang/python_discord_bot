@@ -1,11 +1,26 @@
-import discord, asyncio, os, openai, requests
+import discord
+import asyncio
+import os
+import openai
+import requests
+import subprocess
 import io, base64
 from concurrent.futures import ThreadPoolExecutor
-import pickle, time
+import pickle
+import time
 from PIL import Image
 from dotenv import load_dotenv
 
 load_dotenv()
+
+def run_bash(command : str) -> tuple[str,str]:
+    try:
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout = result.stdout
+        stderr = result.stderr
+        return stdout, stderr
+    except Exception as e:
+        return "", str(e)
 
 class BMO:
     def __init__(self):
@@ -43,6 +58,41 @@ class BMO:
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
         self.personal_assistant_modify_prompts_buff = []
+        self.personal_assistant_commands = {
+            "general": {
+                "help": "show this message",
+                "remind me": "set a reminder that will ping you in a specified amount of time",
+                'shakespeare': 'generate a random snippet of shakespeare'
+            },
+            "chatgpt": {
+                "convo len" : 'show current gpt3 context length',
+                "reset thread" : 'reset gpt3 context length',
+                "show thread" : 'show the entire current convo context',
+                "gptsettings" : 'show the current gpt3 settings',
+                "gptreplsettings" : 'show gpt3 repl settings',
+                "gptset [setting_name] [new_value]": "modify gpt3 settings",
+                "gptreplset [setting_name] [new_value]": "modify gpt3 repl settings",
+                "curr prompt": "get the current prompt name",
+                "change prompt, [new prompt]": "change prompt to the specified prompt(NOTE: resets entire message thread)",
+                "show prompts": "show the available prompts for gpt3",
+                "list models": "list the available gpt models",
+                "modify prompts": "modify the prompts for gpt",
+                "save thread": "save the current gptX thread to a file",
+                "show old threads": "show the old threads that have been saved",
+                "load thread [unique id]": "load a gptX thread from a file",
+                "delete thread [unique id]": "delete a gptX thread from a file",
+                "current model": "show the current gpt model",
+                "swap": "swap between gpt3.5 and gpt4 (regular)",
+            },
+        }
+        self.personal_assistant_command_options = [c for _, v in self.personal_assistant_commands.items() for c in list(v.keys())]
+        help_str = ''
+        sections = list(self.personal_assistant_commands.keys())
+        for section in sections:
+            help_str += f"{section.upper()}\n"
+            for k,v in self.personal_assistant_commands[section].items():
+                help_str += f"\t{k} - {v}\n"
+        self.help_str = help_str
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
@@ -184,6 +234,24 @@ class BMO:
         '''given the image path in the filesystem, send it to the author of the msg'''
         await msg.channel.send(file=discord.File(imgPath))
     ############################## GPT3 ##############################
+
+    ############################## local llm stuff ###############################
+    async def local_gpt_shakespeare(self, length : int)->str:
+        '''
+        generates a random shakespeare snippet from a local GPT trained on shakespeare
+        from nanoGPT repo
+
+        cut the generation output to be of the input length 
+
+        this is duct-taped together im sorry
+        '''
+        stdout, stderr = run_bash(f'cd nanoGPT && /home/wang/anaconda3/envs/dev2-py310/bin/python sample.py --out_dir=../ml_weights/shakespeare --max_new_tokens={length}')
+        if len(stderr) != 0:
+            return f"generation failed -> {stderr}"
+        else:
+            stdout = stdout.split("\n\n")
+            return '\n\n'.join(stdout[1:])
+    ############################## local llm stuff ###############################
 
     ############################## Personal Assistant ##############################
     async def personal_assistant_block(self, msg : discord.message.Message, usr_msg: str) -> None:
@@ -333,50 +401,24 @@ class BMO:
         # convert shortcut to full command if present
         usr_msg = _pa_shortcut_cmd_convertor(usr_msg)
 
-        # alpaca
-        if usr_msg[:6].lower() == "alpaca":
-            prompt = usr_msg[7:]
-
-            # don't generate for empty messages
-            if len(prompt) == 0:
-                await self.send_msg_to_usr(msg, "alpaca got empty message, abort generating response")
-                return
-
-            await self.send_msg_to_usr(msg, f"Generating a response to the prompt: {prompt}")
-            await self.alpaca(msg, prompt)
-            return
-
         # all commands below this are not case sensitive to the usr_msg so just lowercase it
         usr_msg = usr_msg.lower()
 
+        # check if user input is a hard-coded command
+        if usr_msg not in self.personal_assistant_command_options:
+            # TODO: have LLAMA interpret the results...wonder how much work that would be. or should this be a GPT thing.
+            await self.send_msg_to_usr(msg, "Unknown hard coded command, letting LLAMA interpret...WIP")
+            return
+
         # list all the commands available
         if usr_msg == "help":
-            help_str = \
-            "List of available commands:\n\
-            help: show this message\n\
-            remind me: set a reminder that will ping you in a specified amount of time\n\n\
-            \
-            GPT Settings:\n\
-            convo len: show current gpt3 context length\n\
-            reset thread: reset gpt3 context length\n\
-            show thread: show the entire current convo context\n\
-            gptsettings: show the current gpt3 settings\n\
-            gptreplsettings: show gpt3 repl settings\n\
-            gptset [setting_name] [new_value]: modify gpt3 settings\n\
-            gptreplset [setting_name] [new_value]: modify gpt3 repl settings\n\
-            curr prompt: get the current prompt name\n\
-            change prompt, [new prompt]: change prompt to the specified prompt(NOTE: resets entire message thread)\n\
-            show prompts: show the available prompts for gpt3\n\
-            list models: list the available gpt models\n\
-            modify prompts: modify the prompts for gpt\n\
-            save thread: save the current gptX thread to a file\n\
-            show old threads: show the old threads that have been saved\n\
-            load thread [unique id]: load a gptX thread from a file\n\
-            delete thread [unique id]: delete a gptX thread from a file\n\
-            current model: show the current gpt model\n\
-            swap: swap between gpt3.5 and gpt4 (regular)\n\n\
-            "
-            await msg.channel.send(help_str)
+            await msg.channel.send(self.help_str)
+            return
+
+        # testing out nanoGPT integration
+        if usr_msg == "shakespeare":
+            await self.send_msg_to_usr(msg, "Generating...")
+            await self.send_msg_to_usr(msg, await self.local_gpt_shakespeare(length=100))
             return
         
         # just show current model
@@ -543,8 +585,6 @@ class BMO:
                 await self.send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
             return
 
-        await self.send_msg_to_usr(msg, "Type 'help' for a list of commands.")
-
     ############################## Personal Assistant ##############################
 
     ############################## Stable Diffusion ##############################
@@ -564,6 +604,7 @@ class BMO:
             image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
             image.save(self.stable_diffusion_output_dir)
             await self.send_img_to_usr(msg, self.stable_diffusion_output_dir)
+    ############################## Stable Diffusion ##############################
 
     ############################## Main Function ##############################
 
