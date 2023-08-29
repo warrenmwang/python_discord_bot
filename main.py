@@ -1,17 +1,19 @@
-import discord, asyncio, os, openai
+import discord, asyncio, os, openai, requests
+import io, base64
 from concurrent.futures import ThreadPoolExecutor
 import pickle, time
+from PIL import Image
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class BMO:
     def __init__(self):
-        ############################## vals needed ##############################
         # api keys
         self.TOKEN = os.getenv('DISCORD_TOKEN')
         self.GPT3_OPENAI_API_KEY = os.getenv("GPT3_OPENAI_API_KEY")
 
+        # gpt
         self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
         self.gpt3_channel_id = os.getenv('GPT3_CHANNEL_ID')
         self.gpt3_settings = {
@@ -32,8 +34,11 @@ class BMO:
         }
         self.cmd_prefix = "!"
 
-        self.gpt_gpt_channel_name = os.getenv('GPT_GPT_CHANNEL_NAME') 
+        # stable diffusion
+        self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
+        self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
 
+        # personal assistant
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
@@ -45,8 +50,10 @@ class BMO:
         self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
 
-        self.allowed_channels = [self.gpt3_channel_name, self.personal_assistant_channel, self.gpt_gpt_channel_name]
+        # ignore any messages not in these channels
+        self.allowed_channels = [self.gpt3_channel_name, self.personal_assistant_channel, self.stable_diffusion_channel]
 
+        # discord
         self.intents = discord.Intents.all()
         self.client = discord.Client(intents=self.intents)
 
@@ -172,6 +179,11 @@ class BMO:
             start = end
             end += self.discord_msglen_cap
             diff -= self.discord_msglen_cap
+
+    async def send_img_to_usr(self, msg : discord.message.Message, imgPath : str):
+        '''given the image path in the filesystem, send it to the author of the msg'''
+        await msg.channel.send(file=discord.File(imgPath))
+    ############################## GPT3 ##############################
 
     ############################## Personal Assistant ##############################
     async def personal_assistant_block(self, msg : discord.message.Message, usr_msg: str) -> None:
@@ -533,6 +545,26 @@ class BMO:
 
         await self.send_msg_to_usr(msg, "Type 'help' for a list of commands.")
 
+    ############################## Personal Assistant ##############################
+
+    ############################## Stable Diffusion ##############################
+    async def sd_text2img(self, msg : discord.message.Message, usr_msg : str) -> None:
+        '''
+        ping the localhost stablediffusion api 
+        '''
+        payload = {
+            "prompt": usr_msg,
+            "steps": 20
+        }
+        await self.send_msg_to_usr(msg, f"Creating image of \"{usr_msg}\"")
+
+        response = requests.post(url=f'http://127.0.0.1:7860/sdapi/v1/txt2img', json=payload)
+        r = response.json()
+        for i in r['images']:
+            image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
+            image.save(self.stable_diffusion_output_dir)
+            await self.send_img_to_usr(msg, self.stable_diffusion_output_dir)
+
     ############################## Main Function ##############################
 
     def run_discord_bot(self):
@@ -573,6 +605,11 @@ class BMO:
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:
                 await self.personal_assistant_block(msg, usr_msg)
+                return
+
+            ############################## Stable Diffusion ##############################
+            if channel == self.stable_diffusion_channel:
+                await self.sd_text2img(msg, usr_msg) # TODO: copy the input parameters formatting that midjourney uses
                 return
 
             ############################## GPT X ##############################
