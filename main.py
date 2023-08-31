@@ -63,6 +63,7 @@ class BMO:
         self.personal_assistant_commands = {
             "general": {
                 "help": "show this message",
+                "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
                 "remind me": "set a reminder that will ping you in a specified amount of time",
                 'shakespeare': 'generate a random snippet of shakespeare'
             },
@@ -97,6 +98,7 @@ class BMO:
         self.help_str = help_str
 
         self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_command_options}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
+        self.llama_pa_toggle = False
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
@@ -262,7 +264,8 @@ class BMO:
         no chatgpt here...(this is pretty bad tho if im only using 7B)
         '''
         input_ = f"{self.llama_pa_prompt}\n\nUser: {usr_str}\nAgent:"
-        cmd = f'cd llama.cpp && ./main -m ./models/llama-2/13B/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
+        # cmd = f'cd llama.cpp && ./main -m ./models/llama-2/13B/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
+        cmd = f'cd llama.cpp && ./main -m ./models/7B/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
         stdout, _ = run_bash(cmd)
         ret = stdout.split("Agent:")[1]
         return ret
@@ -413,17 +416,29 @@ class BMO:
             await _pa_modify_prompts(self, msg, usr_msg)
             return
 
-        # convert shortcut to full command if present
-        usr_msg = _pa_shortcut_cmd_convertor(usr_msg)
-
         # all commands below this are not case sensitive to the usr_msg so just lowercase it
         usr_msg = usr_msg.lower()
 
+        # convert shortcut to full command if present
+        usr_msg = _pa_shortcut_cmd_convertor(usr_msg)
+
         # check if user input is a hard-coded command
         if usr_msg not in self.personal_assistant_command_options:
-            # TODO: have LLAMA interpret the results...wonder how much work that would be. or should this be a GPT thing.
-            await self.send_msg_to_usr(msg, "Unknown hard coded command, letting LLAMA interpret.")
-            await self.send_msg_to_usr(msg, await self.local_gpt_llama(usr_msg))
+            if self.llama_pa_toggle:
+                await self.send_msg_to_usr(msg, "Unknown hard coded command, letting LLAMA interpret.")
+                await self.send_msg_to_usr(msg, await self.local_gpt_llama(usr_msg))
+            else:
+                await self.send_msg_to_usr(msg, 'Unknown command, run `help`.')
+            return
+        
+        # toggle llama interpretting wrong commands
+        if usr_msg == "pa_llama":
+            if self.llama_pa_toggle == False:
+                self.llama_pa_toggle = True
+                await self.send_msg_to_usr(msg, 'LLama interpret on.')
+            else:
+                self.llama_pa_toggle = False
+                await self.send_msg_to_usr(msg, 'LLama interpret off.')
             return
 
         # list all the commands available
