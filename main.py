@@ -1,6 +1,7 @@
 import discord
 import asyncio
 import os
+import sys
 import openai
 import requests
 import subprocess
@@ -52,6 +53,7 @@ class BMO:
         # stable diffusion
         self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
         self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
+        self.stable_diffusion_toggle = True
 
         # personal assistant
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
@@ -93,6 +95,8 @@ class BMO:
             for k,v in self.personal_assistant_commands[section].items():
                 help_str += f"\t{k} - {v}\n"
         self.help_str = help_str
+
+        self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_command_options}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
@@ -251,6 +255,17 @@ class BMO:
         else:
             stdout = stdout.split("\n\n")
             return '\n\n'.join(stdout[1:])
+
+    async def local_gpt_llama(self, usr_str:str)->str:
+        '''
+        given the user str help the user figure out what they want to do by using a local llama program to figure it out
+        no chatgpt here...(this is pretty bad tho if im only using 7B)
+        '''
+        input_ = f"{self.llama_pa_prompt}\n\nUser: {usr_str}\nAgent:"
+        cmd = f'cd llama.cpp && ./main -m ./models/llama-2/13B/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
+        stdout, _ = run_bash(cmd)
+        ret = stdout.split("Agent:")[1]
+        return ret
     ############################## local llm stuff ###############################
 
     ############################## Personal Assistant ##############################
@@ -407,7 +422,8 @@ class BMO:
         # check if user input is a hard-coded command
         if usr_msg not in self.personal_assistant_command_options:
             # TODO: have LLAMA interpret the results...wonder how much work that would be. or should this be a GPT thing.
-            await self.send_msg_to_usr(msg, "Unknown hard coded command, letting LLAMA interpret...WIP")
+            await self.send_msg_to_usr(msg, "Unknown hard coded command, letting LLAMA interpret.")
+            await self.send_msg_to_usr(msg, await self.local_gpt_llama(usr_msg))
             return
 
         # list all the commands available
@@ -588,7 +604,7 @@ class BMO:
     ############################## Personal Assistant ##############################
 
     ############################## Stable Diffusion ##############################
-    async def sd_text2img(self, msg : discord.message.Message, usr_msg : str) -> None:
+    async def sd_txt2img(self, msg : discord.message.Message, usr_msg : str) -> None:
         '''
         ping the localhost stablediffusion api 
         '''
@@ -604,6 +620,21 @@ class BMO:
             image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
             image.save(self.stable_diffusion_output_dir)
             await self.send_img_to_usr(msg, self.stable_diffusion_output_dir)
+
+    async def sd_load_model(self):
+        '''
+        load the model onto the gpu with the REST API params
+        '''
+        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --api" C-m'
+        run_bash(cmd)
+
+    async def sd_unload_model(self):
+        '''
+        unload the model
+        '''
+        cmd = 'tmux kill-session -t sd_api'
+        run_bash(cmd)
+
     ############################## Stable Diffusion ##############################
 
     ############################## Main Function ##############################
@@ -618,9 +649,15 @@ class BMO:
             '''
             When ready, load all looping functions if any.
             '''
-            print(f'{self.client.user} running!')
+            # gpt init
             await self.gpt_prompt_initializer()
             openai.api_key = self.GPT3_OPENAI_API_KEY
+
+            # load sd model at start
+            await self.sd_load_model()
+
+            # bot is a go!
+            print(f'{self.client.user} running!')
 
         ########################### ON ANY MSG ############################
 
@@ -650,7 +687,27 @@ class BMO:
 
             ############################## Stable Diffusion ##############################
             if channel == self.stable_diffusion_channel:
-                await self.sd_text2img(msg, usr_msg) # TODO: copy the input parameters formatting that midjourney uses
+                if usr_msg[0] == self.cmd_prefix:
+                    usr_msg = usr_msg[1:].lower()
+                    if usr_msg == 'off' and self.stable_diffusion_toggle == False:
+                        await self.send_msg_to_usr(msg, 'Already off.')
+                    elif usr_msg == 'off' and self.stable_diffusion_toggle == True:
+                        await self.sd_unload_model() 
+                        self.stable_diffusion_toggle = False
+                    elif usr_msg == 'on' and self.stable_diffusion_toggle == True:
+                        await self.send_msg_to_usr(msg, 'Already on.')
+                    elif usr_msg == 'on' and self.stable_diffusion_toggle == False:
+                        await self.sd_load_model() 
+                        self.stable_diffusion_toggle = True
+                    else:
+                        await self.send_msg_to_usr(msg, 'Either (on/off) only valid commands.')
+                    return
+
+                # input is a txt2img prompt
+                if self.stable_diffusion_toggle: # note api is loaded by default -- can unload and reload manually
+                    await self.sd_txt2img(msg, usr_msg) # TODO: copy the input parameters formatting that midjourney uses
+                else:
+                    await self.send_msg_to_usr(msg, "Stable Diffusion is not loaded. Load it by running !on (be sure you have enough VRAM).")
                 return
 
             ############################## GPT X ##############################
