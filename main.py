@@ -11,6 +11,7 @@ import pickle
 import time
 from PIL import Image
 from dotenv import load_dotenv
+import queue
 
 load_dotenv()
 
@@ -53,7 +54,7 @@ class BMO:
         # stable diffusion
         self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
         self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
-        self.stable_diffusion_toggle = True
+        self.stable_diffusion_toggle = False
 
         # personal assistant
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
@@ -64,7 +65,8 @@ class BMO:
             "general": {
                 "help": "show this message",
                 "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
-                "remind me": "set a reminder that will ping you in a specified amount of time",
+                "pa_gpt": "toggle the use of ChatGPT to interpret an unknown command",
+                "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
                 'shakespeare': 'generate a random snippet of shakespeare'
             },
             "chatgpt": {
@@ -72,9 +74,9 @@ class BMO:
                 "reset thread" : 'reset gpt3 context length',
                 "show thread" : 'show the entire current convo context',
                 "gptsettings" : 'show the current gpt3 settings',
-                "gptreplsettings" : 'show gpt3 repl settings',
-                "gptset [setting_name] [new_value]": "modify gpt3 settings",
-                "gptreplset [setting_name] [new_value]": "modify gpt3 repl settings",
+                # "gptreplsettings" : 'show gpt3 repl settings',
+                "gptset": "format is `gptset, [setting_name], [new_value]` modify gpt3 settings",
+                # "gptreplset": "format is `gptreplset, [setting_name], [new_value]` modify gpt3 repl settings",
                 "curr prompt": "get the current prompt name",
                 "change prompt, [new prompt]": "change prompt to the specified prompt(NOTE: resets entire message thread)",
                 "show prompts": "show the available prompts for gpt3",
@@ -82,8 +84,8 @@ class BMO:
                 "modify prompts": "modify the prompts for gpt",
                 "save thread": "save the current gptX thread to a file",
                 "show old threads": "show the old threads that have been saved",
-                "load thread [unique id]": "load a gptX thread from a file",
-                "delete thread [unique id]": "delete a gptX thread from a file",
+                "load thread": "format is `load thread, [unique id]` load a gptX thread from a file",
+                "delete thread": "format is `delete thread, [unique id]` delete a gptX thread from a file",
                 "current model": "show the current gpt model",
                 "swap": "swap between gpt3.5 and gpt4 (regular)",
             },
@@ -97,8 +99,12 @@ class BMO:
                 help_str += f"\t{k} - {v}\n"
         self.help_str = help_str
 
-        self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_command_options}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
+        self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_commands}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
         self.llama_pa_toggle = False
+        self.gpt_pa_prompt = f"You are a virtual assistant, бог, and the user has entered an unrecognized command. The commands that you do know are {self.personal_assistant_commands}. Help the user figure out what they want to do. You are benevolent and nice."
+        self.gpt_pa_toggle = False
+
+        self.pa_context_queue = queue.Queue() # if empty, know that there is no current context going on TODO: use this to have more advanced talks with GPT to interact with the hard coded functionalities
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
@@ -423,22 +429,41 @@ class BMO:
         usr_msg = _pa_shortcut_cmd_convertor(usr_msg)
 
         # check if user input is a hard-coded command
-        if usr_msg not in self.personal_assistant_command_options:
+        cmd = usr_msg.split(",")[0]
+        if cmd not in self.personal_assistant_command_options:
             if self.llama_pa_toggle:
-                await self.send_msg_to_usr(msg, "Unknown hard coded command, letting LLAMA interpret.")
+                await self.send_msg_to_usr(msg, "Not a hard coded command, letting LLAMA interpret...")
                 await self.send_msg_to_usr(msg, await self.local_gpt_llama(usr_msg))
+            elif self.gpt_pa_toggle:
+                await self.send_msg_to_usr(msg, "Not a hard coded command, letting GPT interpret...")
+                d = { # TODO: make these params adjustable?
+                    "model": ["gpt-3.5-turbo", "str"],
+                    "messages" : [[{"role":self.chatgpt_name, "content":self.gpt_pa_prompt}], "list of dicts"],
+                    "temperature": ["0.0", "float"],
+                    "top_p": ["1.0", "float"],
+                    "frequency_penalty": ["0", "float"],
+                    "presence_penalty": ["0", "float"],
+                    "max_tokens": ["4096", "int"],
+                }
+                response = await self.gen_gpt3(usr_msg, d)
+                await self.send_msg_to_usr(msg, response)
             else:
                 await self.send_msg_to_usr(msg, 'Unknown command, run `help`.')
+            return
+
+        # Allow using GPT3 to interpret unknown commands as well...
+        # it's just smarter than the small llama's I have now
+        if usr_msg == "pa_gpt":
+            self.gpt_pa_toggle = True
+            self.llama_pa_toggle = False
+            await self.send_msg_to_usr(msg, 'GPT interpret selected.')
             return
         
         # toggle llama interpretting wrong commands
         if usr_msg == "pa_llama":
-            if self.llama_pa_toggle == False:
-                self.llama_pa_toggle = True
-                await self.send_msg_to_usr(msg, 'LLama interpret on.')
-            else:
-                self.llama_pa_toggle = False
-                await self.send_msg_to_usr(msg, 'LLama interpret off.')
+            self.llama_pa_toggle = True
+            self.gpt_pa_toggle = False
+            await self.send_msg_to_usr(msg, 'LLama interpret selected.')
             return
 
         # list all the commands available
@@ -495,7 +520,7 @@ class BMO:
 
         # load msg log from file
         if usr_msg[:11] == "load thread":
-            thread_id = usr_msg.split(" ")[2].strip()
+            thread_id = usr_msg.split(",")[1].strip()
 
             if len(thread_id) == 0:
                 await self.send_msg_to_usr(msg, "No thread id specified")
@@ -514,7 +539,7 @@ class BMO:
         
         # delete a saved thread
         if usr_msg[:13] == "delete thread":
-            thread_id = usr_msg[14:].strip()
+            thread_id = usr_msg.split(",")[1].strip()
 
             if len(thread_id) == 0:
                 await self.send_msg_to_usr(msg, "No thread id specified")
@@ -668,9 +693,6 @@ class BMO:
             await self.gpt_prompt_initializer()
             openai.api_key = self.GPT3_OPENAI_API_KEY
 
-            # load sd model at start
-            await self.sd_load_model()
-
             # bot is a go!
             print(f'{self.client.user} running!')
 
@@ -704,15 +726,19 @@ class BMO:
             if channel == self.stable_diffusion_channel:
                 if usr_msg[0] == self.cmd_prefix:
                     usr_msg = usr_msg[1:].lower()
-                    if usr_msg == 'off' and self.stable_diffusion_toggle == False:
+                    if usr_msg == 'status':
+                        await self.send_msg_to_usr(msg, 'ON' if self.stable_diffusion_toggle else 'OFF')
+                    elif usr_msg == 'off' and self.stable_diffusion_toggle == False:
                         await self.send_msg_to_usr(msg, 'Already off.')
                     elif usr_msg == 'off' and self.stable_diffusion_toggle == True:
                         await self.sd_unload_model() 
+                        await self.send_msg_to_usr(msg, "SD OFF.")
                         self.stable_diffusion_toggle = False
                     elif usr_msg == 'on' and self.stable_diffusion_toggle == True:
                         await self.send_msg_to_usr(msg, 'Already on.')
                     elif usr_msg == 'on' and self.stable_diffusion_toggle == False:
                         await self.sd_load_model() 
+                        await self.send_msg_to_usr(msg, 'Turning on SD (wait like 5 seconds for it to load)...')
                         self.stable_diffusion_toggle = True
                     else:
                         await self.send_msg_to_usr(msg, 'Either (on/off) only valid commands.')
