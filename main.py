@@ -45,6 +45,30 @@ async def send_img_to_usr(msg : discord.message.Message, imgPath : str) -> None:
     '''given the image path in the filesystem, send it to the author of the msg'''
     await msg.channel.send(file=discord.File(imgPath))
 
+def constructHelpMsg(d : dict)->str:
+    '''
+    Stringify the dictionary of commands and their descriptions
+    '''
+    help_str = '```'
+
+    # initially construct the strings
+    n = len(d.items())
+    strings = [None for i in range(n)]
+    for i, (k,v) in enumerate(d.items()):
+        strings[i] = f'{k} - {v}'
+    
+    # Find the maximum length of the first part (before the dash)
+    max_length = max(len(s.split('-')[0]) for s in strings)
+
+    # Format and print the strings
+    for s in strings:
+        parts = s.split('-')
+        formatted_string = "{:<{}} - {}".format(parts[0], max_length, parts[1].strip())
+        help_str += f'{formatted_string}\n'
+    help_str += '```'
+
+    return help_str
+
 # Classes for functionalities
 class StableDiffusion:
     def __init__(self):
@@ -174,22 +198,8 @@ class StableDiffusion:
 
 class ChatGPT:
     def __init__(self):
-        # TODO:
-        pass
+        openai.api_key = os.getenv("GPT3_OPENAI_API_KEY")
 
-# main class
-class BMO:
-    '''
-    BMO is our general virtual assistant.
-    BMO does a lot of things: helps you talk to a smart LLM (GPT), handle basic daily life stuff (reminders, TODO: drafts emails, cheers for you in the fight for life),
-    creates images for you (StableDiffusion) and more!...
-    '''
-    def __init__(self):
-        # api keys
-        self.TOKEN = os.getenv('DISCORD_TOKEN')
-        self.GPT3_OPENAI_API_KEY = os.getenv("GPT3_OPENAI_API_KEY")
-
-        # gpt
         self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
         self.gpt3_channel_id = os.getenv('GPT3_CHANNEL_ID')
         self.gpt3_settings = {
@@ -209,74 +219,270 @@ class BMO:
         }
         self.cmd_prefix = "!"
 
-        # stable diffusion
-        self.StableDiffusion = StableDiffusion()
-        self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
-
-        # personal assistant
-        self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
-        self.personal_assistant_state = None
-        self.personal_assistant_modify_prompts_state = None
-        self.personal_assistant_modify_prompts_buff = []
-        self.personal_assistant_commands = {
-            "general": {
-                "help": "show this message",
-                "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
-                "pa_gpt": "toggle the use of ChatGPT to interpret an unknown command",
-                "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
-                'shakespeare': 'generate a random snippet of shakespeare'
-            },
-            "chatgpt": {
-                "convo len" : 'show current gpt3 context length',
-                "reset thread" : 'reset gpt3 context length',
-                "show thread" : 'show the entire current convo context',
-                "gptsettings" : 'show the current gpt3 settings',
-                # "gptreplsettings" : 'show gpt3 repl settings',
-                "gptset": "format is `gptset, [setting_name], [new_value]` modify gpt3 settings",
-                # "gptreplset": "format is `gptreplset, [setting_name], [new_value]` modify gpt3 repl settings",
-                "curr prompt": "get the current prompt name",
-                "change prompt, [new prompt]": "change prompt to the specified prompt(NOTE: resets entire message thread)",
-                "show prompts": "show the available prompts for gpt3",
-                "list models": "list the available gpt models",
-                "modify prompts": "modify the prompts for gpt",
-                "save thread": "save the current gptX thread to a file",
-                "show old threads": "show the old threads that have been saved",
-                "load thread": "format is `load thread, [unique id]` load a gptX thread from a file",
-                "delete thread": "format is `delete thread, [unique id]` delete a gptX thread from a file",
-                "current model": "show the current gpt model",
-                "swap": "swap between gpt3.5 and gpt4 (regular)",
-            },
-        }
-        self.personal_assistant_command_options = [c for _, v in self.personal_assistant_commands.items() for c in list(v.keys())]
-        help_str = ''
-        sections = list(self.personal_assistant_commands.keys())
-        for section in sections:
-            help_str += f"{section.upper()}\n"
-            for k,v in self.personal_assistant_commands[section].items():
-                help_str += f"\t{k} - {v}\n"
-        self.help_str = help_str
-
-        self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_commands}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
-        self.llama_pa_toggle = False
-        self.gpt_pa_prompt = f"You are a virtual assistant, бог, and the user has entered an unrecognized command. The commands that you do know are {self.personal_assistant_commands}. Help the user figure out what they want to do. You are benevolent and nice."
-        self.gpt_pa_toggle = True # enable GPT help by default
-
-        self.pa_context_queue = queue.Queue() # if empty, know that there is no current context going on TODO: use this to have more advanced talks with GPT to interact with the hard coded functionalities
-
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
         self.all_gpt3_available_prompts = None # list of all prompt names
         self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
 
-        # ignore any messages not in these channels
-        self.allowed_channels = [self.gpt3_channel_name, self.personal_assistant_channel, self.stable_diffusion_channel]
+        self.commands = {
+            "help" : "display this message",
+            "convo len" : 'show current gpt3 context length',
+            "reset thread" : 'reset gpt3 context length',
+            "show thread" : 'show the entire current convo context',
+            "gptsettings" : 'show the current gpt3 settings',
+            # "gptreplsettings" : 'show gpt3 repl settings',
+            "gptset": "format is `gptset, [setting_name], [new_value]` modify gpt3 settings",
+            # "gptreplset": "format is `gptreplset, [setting_name], [new_value]` modify gpt3 repl settings",
+            "curr prompt": "get the current prompt name",
+            "change prompt": "format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)",
+            "show prompts": "show the available prompts for gpt3",
+            "list models": "list the available gpt models",
+            "modify prompts": "modify the prompts for gpt",
+            "save thread": "save the current gptX thread to a file",
+            "show old threads": "show the old threads that have been saved",
+            "load thread": "format is `load thread, [unique id]` load a gptX thread from a file",
+            "delete thread": "format is `delete thread, [unique id]` delete a gptX thread from a file",
+            "current model": "show the current gpt model",
+            "swap": "swap between gpt3.5 and gpt4 (regular)",
+        }
+        self.commands_help_str = constructHelpMsg(self.commands)
 
-        # discord
-        self.intents = discord.Intents.all()
-        self.client = discord.Client(intents=self.intents)
+    async def gpt_prompt_initializer(self) -> None:
+        '''
+        loads in all the prompts from the prompt file
+        should only be run once at bot initialization
+        '''
+        # read the prompts from disk
+        await self.gpt_read_prompts_from_file()
+        # init with first prompt
+        self.curr_prompt_name = self.all_gpt3_available_prompts[0]
+        await self.gpt_context_reset()
 
-    ############################## GPT3 ##############################
+    async def modifyParams(self, msg : discord.message.Message, usr_msg : str) -> None:
+        '''
+        Modifies ChatGPT API params.
+        '''
+        # convert shortcut to full command if present
+        usr_msg = self.shortcut_cmd_convertor(usr_msg)
+
+        # help
+        if usr_msg == "help":
+            await send_msg_to_usr(msg, self.commands_help_str)
+            return
+
+        # save current msg log to file 
+        if usr_msg == "save thread":
+            global time
+            # pickle the current thread from gptsettings["messages"][0]
+            msgs_to_save = self.gpt3_settings["messages"][0]
+            # grab current time in nanoseconds
+            curr_time = time.time()
+            # pickle the msgs_to_save and name it the current time
+            with open(f"./pickled_threads/{curr_time}.pkl", "wb") as f:
+                pickle.dump(msgs_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
+            await send_msg_to_usr(msg, f"Saved thread to file as {curr_time}.pkl")
+            return
+
+        # show old threads that have been saved
+        if usr_msg == "show old threads":
+            # for now, list all the threads...
+            for filename in os.listdir("./pickled_threads"):
+                # read the file and unpickle it
+                with open(f"./pickled_threads/{filename}", "rb") as f:
+                    msgs_to_load = pickle.load(f)
+                    await send_msg_to_usr(msg, f"Thread id: {filename}")
+                    for tmp in msgs_to_load:
+                        tmp_role = tmp["role"]
+                        tmp_msg = tmp["content"]
+                        await send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
+            return
+
+        # load msg log from file
+        if usr_msg[:11] == "load thread":
+            thread_id = usr_msg.split(",")[1].strip()
+
+            if len(thread_id) == 0:
+                await send_msg_to_usr(msg, "No thread id specified")
+                return
+
+            if thread_id[-4:] == ".pkl":
+                thread_id = thread_id[:-4]
+
+            # read the file and unpickle it
+            with open(f"./pickled_threads/{thread_id}.pkl", "rb") as f:
+                msgs_to_load = pickle.load(f)
+                # set the current gptsettings messages to this 
+                self.gpt3_settings["messages"][0] = msgs_to_load
+            await send_msg_to_usr(msg, f"Loaded thread {thread_id}.pkl") 
+            return
+        
+        # delete a saved thread
+        if usr_msg[:13] == "delete thread":
+            thread_id = usr_msg.split(",")[1].strip()
+
+            if len(thread_id) == 0:
+                await send_msg_to_usr(msg, "No thread id specified")
+                return
+
+            # delete the file
+            os.remove(f"./pickled_threads/{thread_id}.pkl")
+            await send_msg_to_usr(msg, f"Deleted thread {thread_id}.pkl")
+            return
+
+        # list available models of interest
+        if usr_msg == "list models":
+            tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
+            await send_msg_to_usr(msg, f"Available models:\n{tmp}")
+            return
+
+        # show the current gpt3 prompt
+        if usr_msg == "curr prompt":
+            await send_msg_to_usr(msg, self.curr_prompt_name)
+            return
+
+        # just show current model
+        if usr_msg == "current model":
+            await send_msg_to_usr(msg, f"Current model: {self.gpt3_settings['model'][0]}")
+            return
+        
+        # swap between gpt3.5 and gpt4
+        if usr_msg == "swap":
+            curr_model = self.gpt3_settings["model"][0]
+            if curr_model == "gpt-3.5-turbo":
+                await self.modifygptset(msg, "gptset model gpt-4")
+            else:
+                await self.modifygptset(msg, "gptset model gpt-3.5-turbo")
+            return
+
+        # add a command to add a new prompt to the list of prompts and save to file
+        if usr_msg == "modify prompts":
+            if self.personal_assistant_state is None:
+                self.personal_assistant_state = "modify prompts"
+                self.personal_assistant_modify_prompts_state = "asked what to do" 
+                await send_msg_to_usr(msg, f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)")
+                return
+
+        # change gpt3 prompt
+        if usr_msg[:13] == "change prompt":
+            # accept only the prompt name, update both str of msgs context and the messages list in gptsettings
+            try:
+                self.curr_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
+                await self.gpt_context_reset()
+                await send_msg_to_usr(msg, "New current prompt set to: " + self.curr_prompt_name)
+                return
+            except Exception as e:
+                await send_msg_to_usr(msg, "usage: change prompt, [new prompt]")
+                return
+
+        # show available prompts as (ind. prompt)
+        if usr_msg == "show prompts":
+            await send_msg_to_usr(msg, self.get_all_gpt_prompts_as_str())
+            return 
+
+        # show user current GPT3 settings
+        if usr_msg == "gptsettings":
+            await self.gptsettings(msg, self.gpt3_settings)
+            return
+
+        # user wants to modify GPT3 settings
+        if usr_msg[0:6] == "gptset":
+            await self.modifygptset(msg, usr_msg)
+            return 
+        
+        # show the current thread
+        if usr_msg == "show thread":
+            # curr_thread = await self.get_curr_gpt_thread()
+            # await send_msg_to_usr(msg, curr_thread)
+            for tmp in self.gpt3_settings["messages"][0]:
+                tmp_role = tmp["role"]
+                tmp_msg = tmp["content"]
+                await send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
+            return
+
+        # reset the current convo with the curr prompt context
+        if usr_msg == "reset thread":
+            await self.gpt_context_reset()
+            await send_msg_to_usr(msg, f"Thread Reset. {await self.get_curr_convo_len_and_approx_tokens(self)}")
+            return
+        
+        # check curr convo context length
+        if usr_msg == "convo len":
+            await send_msg_to_usr(msg, await self.get_curr_convo_len_and_approx_tokens(self))
+            return
+
+    def shortcut_cmd_convertor(self, usr_msg :str) -> str:
+        '''
+        if the user enters a shortcut command, convert it to the actual command
+        '''
+        if usr_msg == "rt":
+            return "reset thread"
+        if usr_msg == "cl":
+            return "convo len"
+        if usr_msg == "st": 
+            return "show thread"
+        if usr_msg[:2] == "cp":
+            return "change prompt" + usr_msg[1:]
+        if usr_msg == "save":
+            return "save thread"
+        if usr_msg[:4] == "load" and usr_msg[5:11] != "thread":
+            return "load thread" + usr_msg[3:]
+        if usr_msg == "lm":
+            return "list models"
+        if usr_msg == "cm":
+            return "current model"
+
+        # not a shortcut command
+        return usr_msg
+
+    # convo len
+    async def get_curr_convo_len_and_approx_tokens(self) -> str:
+        '''
+        returns a string of the current length of the conversation and the approximate number of tokens
+        '''
+        tmp = len(await self.get_curr_gpt_thread())
+        return f"len:{tmp} | tokens: ~{tmp/4}"
+    
+    # changing gptsettings
+    async def modifygptset(self, msg, usr_msg):
+        ''' 
+        Executes both gptset and gptsettings (to print out the new gpt api params for the next call)
+        expect format: gptset [setting_name] [new_value]
+        '''
+        try:
+            await self.gptset(usr_msg, self.gpt3_settings)
+            await self.gptsettings(msg, self.gpt3_settings)
+        except Exception as e:
+            await send_msg_to_usr(msg, "gptset: gptset [setting_name] [new_value]")
+        return
+    
+    async def handle(self, msg : discord.message.Message, usr_msg : str) -> None:
+        '''
+        Entrance function for all ChatGPT API things.
+        '''
+        # catch if is a command
+        if usr_msg[0] == self.cmd_prefix:
+            # pass to PA block without the prefix
+            await self.modifyParams(msg, usr_msg[1:])
+            return
+
+        # check to see if we are running out of tokens for current msg log
+        # get the current thread length
+        curr_thread = await self.get_curr_gpt_thread()
+        curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
+        while curr_thread_len_in_tokens > int(self.gpt3_settings["max_tokens"][0]):
+            # remove the 2nd oldest message from the thread (first oldest is the prompt)
+            self.gpt3_settings["messages"][0].pop(1)
+        
+        # use usr_msg to generate new response from API
+        gpt_response = await self.gen_gpt3(usr_msg)
+
+        # reformat to put into messages list for future context, and save
+        formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
+        self.gpt3_settings["messages"][0].append(formatted_response)
+
+        # send the response to the user
+        await send_msg_to_usr(msg, gpt_response)
 
     def gpt_save_prompts_to_file(self) -> None:
         '''
@@ -299,16 +505,6 @@ class BMO:
             self.map_promptname_to_prompt = pickle.load(f)
             # get the list of prompts
             self.all_gpt3_available_prompts = list(self.map_promptname_to_prompt.keys())
-
-    async def gpt_prompt_initializer(self) -> None:
-        '''
-        loads in all the prompts from the prompt file
-        '''
-        # read the prompts from disk
-        await self.gpt_read_prompts_from_file()
-        # init with first prompt
-        self.curr_prompt_name = self.all_gpt3_available_prompts[0]
-        await self.gpt_context_reset()
 
     async def gpt_context_reset(self) -> None:
         '''
@@ -385,7 +581,56 @@ class BMO:
         '''
         return "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
         
-    ############################## GPT3 ##############################
+
+# main class
+class BMO:
+    '''
+    BMO is our general virtual assistant.
+    BMO does a lot of things: helps you talk to a smart LLM (GPT), handle basic daily life stuff (reminders, TODO: drafts emails, cheers for you in the fight for life),
+    creates images for you (StableDiffusion) and more!...
+    '''
+    def __init__(self):
+        # api keys
+        self.TOKEN = os.getenv('DISCORD_TOKEN')
+
+        # gpt
+        self.ChatGPT = ChatGPT()
+        self.gpt3_channel_name = self.ChatGPT.gpt3_channel_name
+        self.cmd_prefix = "!"
+
+        # stable diffusion
+        self.StableDiffusion = StableDiffusion()
+        self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
+
+        # personal assistant
+        self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
+        self.personal_assistant_state = None
+        self.personal_assistant_modify_prompts_state = None
+        self.personal_assistant_modify_prompts_buff = []
+        self.personal_assistant_commands = {
+            "help": "show this message",
+            "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
+            "pa_gpt": "toggle the use of ChatGPT to interpret an unknown command",
+            "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
+            'shakespeare': 'generate a random snippet of shakespeare'
+        }
+        self.personal_assistant_command_options = self.personal_assistant_commands.keys()
+        self.help_str = constructHelpMsg(self.personal_assistant_commands)
+
+        self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_commands}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
+        self.llama_pa_toggle = False
+        self.gpt_pa_prompt = f"You are a virtual assistant, бог, and the user has entered an unrecognized command. The commands that you do know are {self.personal_assistant_commands}. Help the user figure out what they want to do. You are benevolent and nice."
+        self.gpt_pa_toggle = True # enable GPT help by default
+
+        # self.pa_context_queue = queue.Queue() # if empty, know that there is no current context going on TODO: use this to have more advanced talks with GPT to interact with the hard coded functionalities
+
+        # ignore any messages not in these channels
+        self.allowed_channels = [self.gpt3_channel_name, self.personal_assistant_channel, self.stable_diffusion_channel]
+
+        # discord
+        self.intents = discord.Intents.all()
+        self.client = discord.Client(intents=self.intents)
+
 
     ############################## local llm stuff ###############################
     async def local_gpt_shakespeare(self, length : int)->str:
@@ -424,30 +669,6 @@ class BMO:
         '''
 
         ######## PA funcs ########
-
-        def _pa_shortcut_cmd_convertor(usr_msg :str) -> str:
-            '''
-            if the user enters a shortcut command, convert it to the actual command
-            '''
-            if usr_msg == "rt":
-                return "reset thread"
-            if usr_msg == "cl":
-                return "convo len"
-            if usr_msg == "st": 
-                return "show thread"
-            if usr_msg[:2] == "cp":
-                return "change prompt" + usr_msg[1:]
-            if usr_msg == "save":
-                return "save thread"
-            if usr_msg[:4] == "load" and usr_msg[5:11] != "thread":
-                return "load thread" + usr_msg[3:]
-            if usr_msg == "lm":
-                return "list models"
-            if usr_msg == "cm":
-                return "current model"
-
-            # not a shortcut command
-            return usr_msg
 
         async def _pa_modify_prompts(self, msg : discord.message.Message, usr_msg : str) -> None:
             '''
@@ -537,23 +758,6 @@ class BMO:
                 self.personal_assistant_modify_prompts_state = None
                 return
         
-        # convo len
-        async def _pa_get_curr_convo_len_and_approx_tokens(self) -> str:
-            '''
-            returns a string of the current length of the conversation and the approximate number of tokens
-            '''
-            tmp = len(await self.get_curr_gpt_thread())
-            return f"len:{tmp} | tokens: ~{tmp/4}"
-        
-        # changing gptsettings
-        async def _pa_gptset(self, msg, usr_msg):
-            ''' expect format: gptset [setting_name] [new_value]'''
-            try:
-                await self.gptset(usr_msg, self.gpt3_settings)
-                await self.gptsettings(msg, self.gpt3_settings)
-            except Exception as e:
-                await msg.channel.send("gptset: gptset [setting_name] [new_value]")
-            return
 
         ############################
 
@@ -565,8 +769,9 @@ class BMO:
         # all commands below this are not case sensitive to the usr_msg so just lowercase it
         usr_msg = usr_msg.lower()
 
-        # convert shortcut to full command if present
-        usr_msg = _pa_shortcut_cmd_convertor(usr_msg)
+        # remove cmd prefix if there
+        if usr_msg[0] == self.cmd_prefix:
+            usr_msg = usr_msg[1:]
 
         # check if user input is a hard-coded command
         cmd = usr_msg.split(",")[0]
@@ -608,7 +813,7 @@ class BMO:
 
         # list all the commands available
         if usr_msg == "help":
-            await msg.channel.send(self.help_str)
+            await send_msg_to_usr(msg, self.help_str)
             return
 
         # testing out nanoGPT integration
@@ -617,145 +822,6 @@ class BMO:
             await send_msg_to_usr(msg, await self.local_gpt_shakespeare(length=100))
             return
         
-        # just show current model
-        if usr_msg == "current model":
-            await msg.channel.send(f"Current model: {self.gpt3_settings['model'][0]}")
-            return
-        
-        # swap between gpt3.5 and gpt4
-        if usr_msg == "swap":
-            curr_model = self.gpt3_settings["model"][0]
-            if curr_model == "gpt-3.5-turbo":
-                await _pa_gptset(self, msg, "gptset model gpt-4")
-            else:
-                await _pa_gptset(self, msg, "gptset model gpt-3.5-turbo")
-            return
-
-        # save current msg log to file 
-        if usr_msg == "save thread":
-            global time
-            # pickle the current thread from gptsettings["messages"][0]
-            msgs_to_save = self.gpt3_settings["messages"][0]
-            # grab current time in nanoseconds
-            curr_time = time.time()
-            # pickle the msgs_to_save and name it the current time
-            with open(f"./pickled_threads/{curr_time}.pkl", "wb") as f:
-                pickle.dump(msgs_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
-            await send_msg_to_usr(msg, f"Saved thread to file as {curr_time}.pkl")
-            return
-
-        # show old threads that have been saved
-        if usr_msg == "show old threads":
-            # for now, list all the threads...
-            for filename in os.listdir("./pickled_threads"):
-                # read the file and unpickle it
-                with open(f"./pickled_threads/{filename}", "rb") as f:
-                    msgs_to_load = pickle.load(f)
-                    await send_msg_to_usr(msg, f"Thread id: {filename}")
-                    for tmp in msgs_to_load:
-                        tmp_role = tmp["role"]
-                        tmp_msg = tmp["content"]
-                        await send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
-            return
-
-        # load msg log from file
-        if usr_msg[:11] == "load thread":
-            thread_id = usr_msg.split(",")[1].strip()
-
-            if len(thread_id) == 0:
-                await send_msg_to_usr(msg, "No thread id specified")
-                return
-
-            if thread_id[-4:] == ".pkl":
-                thread_id = thread_id[:-4]
-
-            # read the file and unpickle it
-            with open(f"./pickled_threads/{thread_id}.pkl", "rb") as f:
-                msgs_to_load = pickle.load(f)
-                # set the current gptsettings messages to this 
-                self.gpt3_settings["messages"][0] = msgs_to_load
-            await send_msg_to_usr(msg, f"Loaded thread {thread_id}.pkl") 
-            return
-        
-        # delete a saved thread
-        if usr_msg[:13] == "delete thread":
-            thread_id = usr_msg.split(",")[1].strip()
-
-            if len(thread_id) == 0:
-                await send_msg_to_usr(msg, "No thread id specified")
-                return
-
-            # delete the file
-            os.remove(f"./pickled_threads/{thread_id}.pkl")
-            await send_msg_to_usr(msg, f"Deleted thread {thread_id}.pkl")
-            return
-
-        # list available models of interest
-        if usr_msg == "list models":
-            tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
-            await send_msg_to_usr(msg, f"Available models:\n{tmp}")
-            return
-
-        # show the current gpt3 prompt
-        if usr_msg == "curr prompt":
-            await msg.channel.send(self.curr_prompt_name)
-            return
-
-        # add a command to add a new prompt to the list of prompts and save to file
-        if usr_msg == "modify prompts":
-            if self.personal_assistant_state is None:
-                self.personal_assistant_state = "modify prompts"
-                self.personal_assistant_modify_prompts_state = "asked what to do" 
-                await send_msg_to_usr(msg, f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)")
-                return
-
-        # change gpt3 prompt
-        if usr_msg[:13] == "change prompt":
-            # accept only the prompt name, update both str of msgs context and the messages list in gptsettings
-            try:
-                self.curr_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
-                await self.gpt_context_reset()
-                await msg.channel.send("New current prompt set to: " + self.curr_prompt_name)
-                return
-            except Exception as e:
-                await msg.channel.send("usage: change prompt, [new prompt]")
-                return
-
-        # show available prompts as (ind. prompt)
-        if usr_msg == "show prompts":
-            await send_msg_to_usr(msg, self.get_all_gpt_prompts_as_str())
-            return 
-
-        # show user current GPT3 settings
-        if usr_msg == "gptsettings":
-            await self.gptsettings(msg, self.gpt3_settings)
-            return
-
-        # user wants to modify GPT3 settings
-        if usr_msg[0:6] == "gptset":
-            await _pa_gptset(self, msg, usr_msg)
-            return 
-        
-        # show the current thread
-        if usr_msg == "show thread":
-            # curr_thread = await self.get_curr_gpt_thread()
-            # await send_msg_to_usr(msg, curr_thread)
-            for tmp in self.gpt3_settings["messages"][0]:
-                tmp_role = tmp["role"]
-                tmp_msg = tmp["content"]
-                await send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
-            return
-
-        # reset the current convo with the curr prompt context
-        if usr_msg == "reset thread":
-            await self.gpt_context_reset()
-            await msg.channel.send(f"Thread Reset. {await _pa_get_curr_convo_len_and_approx_tokens(self)}")
-            return
-        
-        # check curr convo context length
-        if usr_msg == "convo len":
-            await send_msg_to_usr(msg, await _pa_get_curr_convo_len_and_approx_tokens(self))
-            return
 
         # Reminders based on a time
         if usr_msg[0:9] == "remind me":
@@ -796,10 +862,7 @@ class BMO:
             '''
             When ready, load all looping functions if any.
             '''
-            # gpt init
-            await self.gpt_prompt_initializer()
-            openai.api_key = self.GPT3_OPENAI_API_KEY
-
+            await self.ChatGPT.gpt_prompt_initializer()
             # bot is a go!
             print(f'{self.client.user} running!')
 
@@ -834,32 +897,10 @@ class BMO:
                 await self.StableDiffusion.handle(msg, usr_msg)
                 return
 
-            ############################## GPT X ##############################
+            ############################## ChatGPT API ##############################
             # if sent in GPT_CHANNEL, send back a GPTX response
             if channel == self.gpt3_channel_name:
-                # catch if is a command
-                if usr_msg[0] == self.cmd_prefix:
-                    # pass to PA block without the prefix
-                    await self.personal_assistant_block(msg, usr_msg[1:])
-                    return
-
-                # check to see if we are running out of tokens for current msg log
-                # get the current thread length
-                curr_thread = await self.get_curr_gpt_thread()
-                curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
-                while curr_thread_len_in_tokens > int(self.gpt3_settings["max_tokens"][0]):
-                    # remove the 2nd oldest message from the thread (first oldest is the prompt)
-                    self.gpt3_settings["messages"][0].pop(1)
-                
-                # use usr_msg to generate new response from API
-                gpt_response = await self.gen_gpt3(usr_msg)
-
-                # reformat to put into messages list for future context, and save
-                formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
-                self.gpt3_settings["messages"][0].append(formatted_response)
-
-                # send the response to the user
-                await send_msg_to_usr(msg, gpt_response)
+                await self.ChatGPT.handle(msg, usr_msg)
                 return
 
         self.client.run(self.TOKEN)
