@@ -12,9 +12,12 @@ import time
 from PIL import Image
 from dotenv import load_dotenv
 import queue
-
 load_dotenv()
 
+# CONSTANTS
+DISCORD_MSGLEN_CAP=2000
+
+# GLOBAL FUNCTIONS (what could go wrong)
 def run_bash(command : str) -> tuple[str,str]:
     try:
         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -24,7 +27,163 @@ def run_bash(command : str) -> tuple[str,str]:
     except Exception as e:
         return "", str(e)
 
+async def send_msg_to_usr(msg : discord.message.Message, usr_msg : str) -> None: 
+    '''
+    in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
+    the damn message (whether it be one or multiple messages)
+    '''
+    diff = len(usr_msg)
+    start = 0
+    end = DISCORD_MSGLEN_CAP
+    while diff > 0:
+        await msg.channel.send(usr_msg[start:end])
+        start = end
+        end += DISCORD_MSGLEN_CAP
+        diff -= DISCORD_MSGLEN_CAP
+
+async def send_img_to_usr(msg : discord.message.Message, imgPath : str) -> None:
+    '''given the image path in the filesystem, send it to the author of the msg'''
+    await msg.channel.send(file=discord.File(imgPath))
+
+# Classes for functionalities
+class StableDiffusion:
+    def __init__(self):
+        self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
+        self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
+        self.stable_diffusion_toggle = False
+        self.cmd_prefix = "!"
+
+    async def handle(self, msg : discord.message.Message, usr_msg : str) -> None:
+        '''
+        Entrance function into doing anything with stable diffusion.
+        '''
+        # cmd (help, status, on, off)
+        if usr_msg[0] == self.cmd_prefix:
+            usr_msg = usr_msg[1:].lower()
+            if usr_msg == 'status':
+                await send_msg_to_usr(msg, 'ON' if self.stable_diffusion_toggle else 'OFF')
+            elif usr_msg == 'off' and self.stable_diffusion_toggle == False:
+                await send_msg_to_usr(msg, 'Already off.')
+            elif usr_msg == 'off' and self.stable_diffusion_toggle == True:
+                await self.sd_unload_model() 
+                await send_msg_to_usr(msg, "SD OFF.")
+                self.stable_diffusion_toggle = False
+            elif usr_msg == 'on' and self.stable_diffusion_toggle == True:
+                await send_msg_to_usr(msg, 'Already on.')
+            elif usr_msg == 'on' and self.stable_diffusion_toggle == False:
+                await self.sd_load_model() 
+                await send_msg_to_usr(msg, 'Turning on SD (wait like 5 seconds for it to load)...')
+                self.stable_diffusion_toggle = True
+            elif usr_msg == 'help':
+                await send_msg_to_usr(msg, '!help - show this message\n!on - load model to GPU\n!off - unload model from GPU\n!status - display if model is loaded or not')
+            else:
+                await send_msg_to_usr(msg, 'use !help for help')
+            return
+
+        # input is a txt2img prompt
+        if self.stable_diffusion_toggle: # note api is NOT loaded by default -- load/reload and unload manually
+            await self.sd_txt2img(msg, usr_msg) # TODO: copy the input parameters formatting that midjourney uses
+        else:
+            await send_msg_to_usr(msg, "Stable Diffusion is not loaded. Load it by running !on (be sure you have enough VRAM).")
+
+    
+    async def sd_txt2img(self, msg : discord.message.Message, usr_msg : str) -> None:
+        '''
+        ping the localhost stablediffusion api 
+        '''
+        # these can be adjustable, tho need to figure out what they mean
+        payload = {
+                    "prompt": usr_msg,
+                    # "enable_hr": False,
+                    # "denoising_strength": 0,
+                    # "firstphase_width": 0,
+                    # "firstphase_height": 0,
+                    # "hr_scale": 2,
+                    # "hr_upscaler": "string",
+                    # "hr_second_pass_steps": 0,
+                    # "hr_resize_x": 0,
+                    # "hr_resize_y": 0,
+                    # "hr_sampler_name": "string",
+                    # "hr_prompt": "",
+                    # "hr_negative_prompt": "",
+                    # "prompt": "",
+                    # "styles": [
+                    #     "string"
+                    # ],
+                    # "seed": -1,
+                    # "subseed": -1,
+                    # "subseed_strength": 0,
+                    # "seed_resize_from_h": -1,
+                    # "seed_resize_from_w": -1,
+                    # "sampler_name": "Euler",
+                    # "batch_size": 1,
+                    "n_iter": 4,
+                    "steps": 25,
+                    "cfg_scale": 8.5,
+                    "width": 768,
+                    "height": 768,
+                    # "restore_faces": False,
+                    # "tiling": False,
+                    # "do_not_save_samples": False,
+                    # "do_not_save_grid": False,
+                    # "negative_prompt": "string",
+                    # "eta": 0,
+                    # "s_min_uncond": 0,
+                    # "s_churn": 0,
+                    # "s_tmax": 0,
+                    # "s_tmin": 0,
+                    # "s_noise": 1,
+                    # "override_settings": {},
+                    # "override_settings_restore_afterwards": True,
+                    # "script_args": [],
+                    # "sampler_index": "Euler",
+                    # "script_name": "string",
+                    # "send_images": True,
+                    # "save_images": False,
+                    # "alwayson_scripts": {}
+                }
+
+        await send_msg_to_usr(msg, f"Creating image of \"{usr_msg}\"")
+
+        response = requests.post(url=f'http://127.0.0.1:7860/sdapi/v1/txt2img', json=payload)
+        r = response.json()
+        # DEBUG
+        # print(r.keys())
+        # for k in r.keys():
+        #     print(f'{r[k]=}')
+
+        # TODO: use PIL to manually make a grid of the 4 images into a single image to be return to the user.
+        for i in r['images']:
+            image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
+            image.save(self.stable_diffusion_output_dir)
+            await send_img_to_usr(msg, self.stable_diffusion_output_dir)
+
+    async def sd_load_model(self):
+        '''
+        load the model onto the gpu with the REST API params
+        '''
+        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --api" C-m'
+        run_bash(cmd)
+
+    async def sd_unload_model(self):
+        '''
+        unload the model
+        '''
+        cmd = 'tmux kill-session -t sd_api'
+        run_bash(cmd)
+
+class ChatGPT:
+    def __init__(self):
+        # TODO:
+        pass
+
+# main class
 class BMO:
+    '''
+    BMO is our general virtual assistant.
+    BMO does a lot of things: helps you talk to a smart LLM (GPT), handle basic daily life stuff (reminders, TODO: drafts emails, cheers for you in the fight for life),
+    creates images for you (StableDiffusion) and more!...
+    '''
     def __init__(self):
         # api keys
         self.TOKEN = os.getenv('DISCORD_TOKEN')
@@ -42,7 +201,6 @@ class BMO:
             "presence_penalty": ["0", "float"],
             "max_tokens": ["4096", "int"],
         }
-        self.discord_msglen_cap = 2000
         self.chatgpt_name="assistant"
         self.gpt3_model_to_max_tokens = {
             "gpt-3.5-turbo": 4096,
@@ -52,9 +210,8 @@ class BMO:
         self.cmd_prefix = "!"
 
         # stable diffusion
-        self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
-        self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
-        self.stable_diffusion_toggle = False
+        self.StableDiffusion = StableDiffusion()
+        self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
 
         # personal assistant
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
@@ -102,7 +259,7 @@ class BMO:
         self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_commands}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
         self.llama_pa_toggle = False
         self.gpt_pa_prompt = f"You are a virtual assistant, бог, and the user has entered an unrecognized command. The commands that you do know are {self.personal_assistant_commands}. Help the user figure out what they want to do. You are benevolent and nice."
-        self.gpt_pa_toggle = False
+        self.gpt_pa_toggle = True # enable GPT help by default
 
         self.pa_context_queue = queue.Queue() # if empty, know that there is no current context going on TODO: use this to have more advanced talks with GPT to interact with the hard coded functionalities
 
@@ -205,7 +362,7 @@ class BMO:
         prints out all available gpt3 settings, their current values, and their data types
         excludes the possibly large messages list
         '''
-        await self.send_msg_to_usr(msg, "".join([f"{key} ({gpt3_settings[key][1]}) = {gpt3_settings[key][0]}\n" for key in gpt3_settings.keys() if key != "messages"]))
+        await send_msg_to_usr(msg, "".join([f"{key} ({gpt3_settings[key][1]}) = {gpt3_settings[key][0]}\n" for key in gpt3_settings.keys() if key != "messages"]))
 
     async def gptset(self, usr_msg : str, gpt3_settings : dict) -> None:
         '''
@@ -228,23 +385,6 @@ class BMO:
         '''
         return "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
         
-    async def send_msg_to_usr(self, msg : discord.message.Message, usr_msg : str): 
-        '''
-        in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
-        the damn message (whether it be one or multiple messages)
-        '''
-        diff = len(usr_msg)
-        start = 0
-        end = self.discord_msglen_cap
-        while diff > 0:
-            await msg.channel.send(usr_msg[start:end])
-            start = end
-            end += self.discord_msglen_cap
-            diff -= self.discord_msglen_cap
-
-    async def send_img_to_usr(self, msg : discord.message.Message, imgPath : str):
-        '''given the image path in the filesystem, send it to the author of the msg'''
-        await msg.channel.send(file=discord.File(imgPath))
     ############################## GPT3 ##############################
 
     ############################## local llm stuff ###############################
@@ -319,7 +459,7 @@ class BMO:
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 self.personal_assistant_modify_prompts_buff = []
-                await self.send_msg_to_usr(msg, "Ok, cancelling.")
+                await send_msg_to_usr(msg, "Ok, cancelling.")
                 return
 
             # Stage 1: usr picks a operator
@@ -327,27 +467,27 @@ class BMO:
                 # check response
                 if usr_msg == "edit":
                     self.personal_assistant_modify_prompts_state = "edit"
-                    await self.send_msg_to_usr(msg, "Ok which prompt would you like to edit? [enter prompt name]")
+                    await send_msg_to_usr(msg, "Ok which prompt would you like to edit? [enter prompt name]")
                     return
                 elif usr_msg == "add":
                     self.personal_assistant_modify_prompts_state = "add"
-                    await self.send_msg_to_usr(msg, "Ok, write a prompt in this format: [name]<SEP>[PROMPT] w/o the square brackets.")
+                    await send_msg_to_usr(msg, "Ok, write a prompt in this format: [name]<SEP>[PROMPT] w/o the square brackets.")
                     return
                 elif usr_msg == "delete":
                     self.personal_assistant_modify_prompts_state = "delete"
-                    await self.send_msg_to_usr(msg, "Ok, which prompt would you like to delete? [enter prompt name]")
+                    await send_msg_to_usr(msg, "Ok, which prompt would you like to delete? [enter prompt name]")
                     return
                 elif usr_msg == "changename":
                     self.personal_assistant_modify_prompts_state = "changename"
-                    await self.send_msg_to_usr(msg, "Ok, which prompt name would you like to rename? [enter prompt name]")
+                    await send_msg_to_usr(msg, "Ok, which prompt name would you like to rename? [enter prompt name]")
                     return
                 else:
-                    await self.send_msg_to_usr(msg, "Invalid response, please try again.")
+                    await send_msg_to_usr(msg, "Invalid response, please try again.")
                     return
 
             # Stage 2: usr provides more info for an already chosen operator
             if self.personal_assistant_modify_prompts_state == "edit":
-                await self.send_msg_to_usr(msg, f"Ok, you said to edit {usr_msg}.\nSend me the new prompt for this prompt name. (just the new prompt in its entirety)")
+                await send_msg_to_usr(msg, f"Ok, you said to edit {usr_msg}.\nSend me the new prompt for this prompt name. (just the new prompt in its entirety)")
                 self.personal_assistant_modify_prompts_buff.append(usr_msg)
                 self.personal_assistant_modify_prompts_state = "edit2"
                 return
@@ -357,33 +497,33 @@ class BMO:
                 new_prompt = usr_msg
                 self.map_promptname_to_prompt[prompt_name] = new_prompt
                 self.gpt_save_prompts_to_file() # write the new prompts to file
-                await self.send_msg_to_usr(msg, f"Updated '{prompt_name}' to '{new_prompt}'")
+                await send_msg_to_usr(msg, f"Updated '{prompt_name}' to '{new_prompt}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
             if self.personal_assistant_modify_prompts_state == "add":
-                await self.send_msg_to_usr(msg, f"Ok, you said to add '{usr_msg}'...")
+                await send_msg_to_usr(msg, f"Ok, you said to add '{usr_msg}'...")
                 prompt_name = usr_msg.split("<SEP>")[0]
                 prompt = usr_msg.split("<SEP>")[1]
                 self.map_promptname_to_prompt[prompt_name] = prompt
                 self.gpt_save_prompts_to_file() # write the new prompts to file
-                await self.send_msg_to_usr(msg, f"Added '{prompt_name}' with prompt '{prompt}'")
+                await send_msg_to_usr(msg, f"Added '{prompt_name}' with prompt '{prompt}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
             if self.personal_assistant_modify_prompts_state == "delete":
-                await self.send_msg_to_usr(msg, f"Ok, you said to delete '{usr_msg}'...")
+                await send_msg_to_usr(msg, f"Ok, you said to delete '{usr_msg}'...")
                 prompt_name = usr_msg
                 del self.map_promptname_to_prompt[prompt_name]
                 self.gpt_save_prompts_to_file() # write the new prompts to file
-                await self.send_msg_to_usr(msg, f"Deleted '{prompt_name}'")
+                await send_msg_to_usr(msg, f"Deleted '{prompt_name}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
             if self.personal_assistant_modify_prompts_state == "changename":
                 self.personal_assistant_modify_prompts_buff.append(usr_msg)
                 self.personal_assistant_modify_prompts_state = "changename2"
-                await self.send_msg_to_usr(msg, f"Ok, what would you like to change the {usr_msg} to?")
+                await send_msg_to_usr(msg, f"Ok, what would you like to change the {usr_msg} to?")
                 return
             if self.personal_assistant_modify_prompts_state == "changename2":
                 prompt_name = self.personal_assistant_modify_prompts_buff.pop()
@@ -392,7 +532,7 @@ class BMO:
                 del self.map_promptname_to_prompt[prompt_name]
                 self.map_promptname_to_prompt[new_prompt_name] = prompt
                 self.gpt_save_prompts_to_file() # write the new prompts to file
-                await self.send_msg_to_usr(msg, f"Changed '{prompt_name}' to '{new_prompt_name}'")
+                await send_msg_to_usr(msg, f"Changed '{prompt_name}' to '{new_prompt_name}'")
                 self.personal_assistant_state = None
                 self.personal_assistant_modify_prompts_state = None
                 return
@@ -432,10 +572,10 @@ class BMO:
         cmd = usr_msg.split(",")[0]
         if cmd not in self.personal_assistant_command_options:
             if self.llama_pa_toggle:
-                await self.send_msg_to_usr(msg, "Not a hard coded command, letting LLAMA interpret...")
-                await self.send_msg_to_usr(msg, await self.local_gpt_llama(usr_msg))
+                await send_msg_to_usr(msg, "Not a hard coded command, letting LLAMA interpret...")
+                await send_msg_to_usr(msg, await self.local_gpt_llama(usr_msg))
             elif self.gpt_pa_toggle:
-                await self.send_msg_to_usr(msg, "Not a hard coded command, letting GPT interpret...")
+                await send_msg_to_usr(msg, "Not a hard coded command, letting GPT interpret...")
                 d = { # TODO: make these params adjustable?
                     "model": ["gpt-3.5-turbo", "str"],
                     "messages" : [[{"role":self.chatgpt_name, "content":self.gpt_pa_prompt}], "list of dicts"],
@@ -446,9 +586,9 @@ class BMO:
                     "max_tokens": ["4096", "int"],
                 }
                 response = await self.gen_gpt3(usr_msg, d)
-                await self.send_msg_to_usr(msg, response)
+                await send_msg_to_usr(msg, response)
             else:
-                await self.send_msg_to_usr(msg, 'Unknown command, run `help`.')
+                await send_msg_to_usr(msg, 'Unknown command, run `help`.')
             return
 
         # Allow using GPT3 to interpret unknown commands as well...
@@ -456,14 +596,14 @@ class BMO:
         if usr_msg == "pa_gpt":
             self.gpt_pa_toggle = True
             self.llama_pa_toggle = False
-            await self.send_msg_to_usr(msg, 'GPT interpret selected.')
+            await send_msg_to_usr(msg, 'GPT interpret selected.')
             return
         
         # toggle llama interpretting wrong commands
         if usr_msg == "pa_llama":
             self.llama_pa_toggle = True
             self.gpt_pa_toggle = False
-            await self.send_msg_to_usr(msg, 'LLama interpret selected.')
+            await send_msg_to_usr(msg, 'LLama interpret selected.')
             return
 
         # list all the commands available
@@ -473,8 +613,8 @@ class BMO:
 
         # testing out nanoGPT integration
         if usr_msg == "shakespeare":
-            await self.send_msg_to_usr(msg, "Generating...")
-            await self.send_msg_to_usr(msg, await self.local_gpt_shakespeare(length=100))
+            await send_msg_to_usr(msg, "Generating...")
+            await send_msg_to_usr(msg, await self.local_gpt_shakespeare(length=100))
             return
         
         # just show current model
@@ -501,7 +641,7 @@ class BMO:
             # pickle the msgs_to_save and name it the current time
             with open(f"./pickled_threads/{curr_time}.pkl", "wb") as f:
                 pickle.dump(msgs_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
-            await self.send_msg_to_usr(msg, f"Saved thread to file as {curr_time}.pkl")
+            await send_msg_to_usr(msg, f"Saved thread to file as {curr_time}.pkl")
             return
 
         # show old threads that have been saved
@@ -511,11 +651,11 @@ class BMO:
                 # read the file and unpickle it
                 with open(f"./pickled_threads/{filename}", "rb") as f:
                     msgs_to_load = pickle.load(f)
-                    await self.send_msg_to_usr(msg, f"Thread id: {filename}")
+                    await send_msg_to_usr(msg, f"Thread id: {filename}")
                     for tmp in msgs_to_load:
                         tmp_role = tmp["role"]
                         tmp_msg = tmp["content"]
-                        await self.send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
+                        await send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
             return
 
         # load msg log from file
@@ -523,7 +663,7 @@ class BMO:
             thread_id = usr_msg.split(",")[1].strip()
 
             if len(thread_id) == 0:
-                await self.send_msg_to_usr(msg, "No thread id specified")
+                await send_msg_to_usr(msg, "No thread id specified")
                 return
 
             if thread_id[-4:] == ".pkl":
@@ -534,7 +674,7 @@ class BMO:
                 msgs_to_load = pickle.load(f)
                 # set the current gptsettings messages to this 
                 self.gpt3_settings["messages"][0] = msgs_to_load
-            await self.send_msg_to_usr(msg, f"Loaded thread {thread_id}.pkl") 
+            await send_msg_to_usr(msg, f"Loaded thread {thread_id}.pkl") 
             return
         
         # delete a saved thread
@@ -542,18 +682,18 @@ class BMO:
             thread_id = usr_msg.split(",")[1].strip()
 
             if len(thread_id) == 0:
-                await self.send_msg_to_usr(msg, "No thread id specified")
+                await send_msg_to_usr(msg, "No thread id specified")
                 return
 
             # delete the file
             os.remove(f"./pickled_threads/{thread_id}.pkl")
-            await self.send_msg_to_usr(msg, f"Deleted thread {thread_id}.pkl")
+            await send_msg_to_usr(msg, f"Deleted thread {thread_id}.pkl")
             return
 
         # list available models of interest
         if usr_msg == "list models":
             tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
-            await self.send_msg_to_usr(msg, f"Available models:\n{tmp}")
+            await send_msg_to_usr(msg, f"Available models:\n{tmp}")
             return
 
         # show the current gpt3 prompt
@@ -566,7 +706,7 @@ class BMO:
             if self.personal_assistant_state is None:
                 self.personal_assistant_state = "modify prompts"
                 self.personal_assistant_modify_prompts_state = "asked what to do" 
-                await self.send_msg_to_usr(msg, f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)")
+                await send_msg_to_usr(msg, f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)")
                 return
 
         # change gpt3 prompt
@@ -583,7 +723,7 @@ class BMO:
 
         # show available prompts as (ind. prompt)
         if usr_msg == "show prompts":
-            await self.send_msg_to_usr(msg, self.get_all_gpt_prompts_as_str())
+            await send_msg_to_usr(msg, self.get_all_gpt_prompts_as_str())
             return 
 
         # show user current GPT3 settings
@@ -599,11 +739,11 @@ class BMO:
         # show the current thread
         if usr_msg == "show thread":
             # curr_thread = await self.get_curr_gpt_thread()
-            # await self.send_msg_to_usr(msg, curr_thread)
+            # await send_msg_to_usr(msg, curr_thread)
             for tmp in self.gpt3_settings["messages"][0]:
                 tmp_role = tmp["role"]
                 tmp_msg = tmp["content"]
-                await self.send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
+                await send_msg_to_usr(msg, f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n")
             return
 
         # reset the current convo with the curr prompt context
@@ -614,7 +754,7 @@ class BMO:
         
         # check curr convo context length
         if usr_msg == "convo len":
-            await self.send_msg_to_usr(msg, await _pa_get_curr_convo_len_and_approx_tokens(self))
+            await send_msg_to_usr(msg, await _pa_get_curr_convo_len_and_approx_tokens(self))
             return
 
         # Reminders based on a time
@@ -634,48 +774,15 @@ class BMO:
                     await msg.channel.send("only time units implemented: s, m, h, d")
                     return
 
-                await self.send_msg_to_usr(msg, f"Reminder set for '{task}' in {time} {unit}.")
+                await send_msg_to_usr(msg, f"Reminder set for '{task}' in {time} {unit}.")
                 await asyncio.sleep(remind_time)
-                await self.send_msg_to_usr(msg, f"REMINDER: {task}")
+                await send_msg_to_usr(msg, f"REMINDER: {task}")
             except Exception as e:
-                await self.send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
+                await send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
             return
 
     ############################## Personal Assistant ##############################
 
-    ############################## Stable Diffusion ##############################
-    async def sd_txt2img(self, msg : discord.message.Message, usr_msg : str) -> None:
-        '''
-        ping the localhost stablediffusion api 
-        '''
-        payload = {
-            "prompt": usr_msg,
-            "steps": 20
-        }
-        await self.send_msg_to_usr(msg, f"Creating image of \"{usr_msg}\"")
-
-        response = requests.post(url=f'http://127.0.0.1:7860/sdapi/v1/txt2img', json=payload)
-        r = response.json()
-        for i in r['images']:
-            image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
-            image.save(self.stable_diffusion_output_dir)
-            await self.send_img_to_usr(msg, self.stable_diffusion_output_dir)
-
-    async def sd_load_model(self):
-        '''
-        load the model onto the gpu with the REST API params
-        '''
-        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --api" C-m'
-        run_bash(cmd)
-
-    async def sd_unload_model(self):
-        '''
-        unload the model
-        '''
-        cmd = 'tmux kill-session -t sd_api'
-        run_bash(cmd)
-
-    ############################## Stable Diffusion ##############################
 
     ############################## Main Function ##############################
 
@@ -724,31 +831,7 @@ class BMO:
 
             ############################## Stable Diffusion ##############################
             if channel == self.stable_diffusion_channel:
-                if usr_msg[0] == self.cmd_prefix:
-                    usr_msg = usr_msg[1:].lower()
-                    if usr_msg == 'status':
-                        await self.send_msg_to_usr(msg, 'ON' if self.stable_diffusion_toggle else 'OFF')
-                    elif usr_msg == 'off' and self.stable_diffusion_toggle == False:
-                        await self.send_msg_to_usr(msg, 'Already off.')
-                    elif usr_msg == 'off' and self.stable_diffusion_toggle == True:
-                        await self.sd_unload_model() 
-                        await self.send_msg_to_usr(msg, "SD OFF.")
-                        self.stable_diffusion_toggle = False
-                    elif usr_msg == 'on' and self.stable_diffusion_toggle == True:
-                        await self.send_msg_to_usr(msg, 'Already on.')
-                    elif usr_msg == 'on' and self.stable_diffusion_toggle == False:
-                        await self.sd_load_model() 
-                        await self.send_msg_to_usr(msg, 'Turning on SD (wait like 5 seconds for it to load)...')
-                        self.stable_diffusion_toggle = True
-                    else:
-                        await self.send_msg_to_usr(msg, 'Either (on/off) only valid commands.')
-                    return
-
-                # input is a txt2img prompt
-                if self.stable_diffusion_toggle: # note api is loaded by default -- can unload and reload manually
-                    await self.sd_txt2img(msg, usr_msg) # TODO: copy the input parameters formatting that midjourney uses
-                else:
-                    await self.send_msg_to_usr(msg, "Stable Diffusion is not loaded. Load it by running !on (be sure you have enough VRAM).")
+                await self.StableDiffusion.handle(msg, usr_msg)
                 return
 
             ############################## GPT X ##############################
@@ -776,7 +859,7 @@ class BMO:
                 self.gpt3_settings["messages"][0].append(formatted_response)
 
                 # send the response to the user
-                await self.send_msg_to_usr(msg, gpt_response)
+                await send_msg_to_usr(msg, gpt_response)
                 return
 
         self.client.run(self.TOKEN)
