@@ -248,16 +248,10 @@ class ChatGPT:
         }
         self.commands_help_str = constructHelpMsg(self.commands)
 
-    async def gpt_prompt_initializer(self) -> None:
-        '''
-        loads in all the prompts from the prompt file
-        should only be run once at bot initialization
-        '''
-        # read the prompts from disk
-        await self.gpt_read_prompts_from_file()
-        # init with first prompt
-        self.curr_prompt_name = self.all_gpt3_available_prompts[0]
-        await self.gpt_context_reset()
+        # initialize prompts
+        self.gpt_read_prompts_from_file() # read the prompts from disk
+        self.curr_prompt_name = self.all_gpt3_available_prompts[0] # init with first prompt
+        self.gpt_context_reset()
 
     async def modifyParams(self, msg : discord.message.Message, usr_msg : str) -> None:
         '''
@@ -491,7 +485,7 @@ class ChatGPT:
         with open(self.gpt_prompts_file, "wb") as f:
             pickle.dump(self.map_promptname_to_prompt, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    async def gpt_read_prompts_from_file(self) -> None:
+    def gpt_read_prompts_from_file(self) -> None:
         '''
         reads all the prompts from the prompt file and stores them in self.all_gpt3_available_prompts and the mapping
         '''
@@ -506,7 +500,7 @@ class ChatGPT:
             # get the list of prompts
             self.all_gpt3_available_prompts = list(self.map_promptname_to_prompt.keys())
 
-    async def gpt_context_reset(self) -> None:
+    def gpt_context_reset(self) -> None:
         '''
         resets the gpt3 context
         > can be used at the start of program run and whenever a reset is wanted
@@ -580,29 +574,66 @@ class ChatGPT:
         constructs the string representing each [prompt_name, prompt] as one long string and return it
         '''
         return "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
-        
-
-# main class
-class BMO:
+    
+class LLM:
     '''
-    BMO is our general virtual assistant.
-    BMO does a lot of things: helps you talk to a smart LLM (GPT), handle basic daily life stuff (reminders, TODO: drafts emails, cheers for you in the fight for life),
-    creates images for you (StableDiffusion) and more!...
+    General class for any kind of local large language model (LLAMA, LLAMA2, LLAMA variants)
+    or small language models / GPT models
+    '''
+    def __init__(self, arch : str, model : str, prompt : str, maxGenLen : int = 100) -> None:
+        '''
+        arch - type of model (llama, nanogpt)
+        model - currently used to distinguish which kind of LLAMA model to use 
+        maxGenLen - maximum length of text generations desired 
+        '''
+        self.arch = arch # e.g. llama
+        self.model = model # e.g. 7B, 13B
+        self.maxGenLen = maxGenLen # maximum length of text generation
+        self.prompt = prompt # prompt for generations
+
+    async def generate(self, usr_str : str) -> str:
+        '''
+        Generates a text output based on the usr_str with the arch/model specified
+        '''
+        # if self.arch == "nanogptShakespeare":
+        #     return await self.runNanoShakespeare(self.maxGenLen)
+        # elif self.arch == "llama":
+        #     return await self.runLLAMA(usr_str)
+
+        return await self.runLLAMA(usr_str)
+
+    async def runLLAMA(self, usr_str:str)->str:
+        '''
+        given the user str help the user figure out what they want to do by using a local llama program to figure it out
+        no chatgpt here...(this is pretty bad tho if im only using 7B)
+        '''
+        input_ = f"{self.prompt}\n\nUser: {usr_str}\nAgent:"
+        cmd = f'cd llama.cpp && ./main -m ./models/{self.model}/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
+        stdout, _ = run_bash(cmd)
+        ret = stdout.split("Agent:")[1]
+        return ret
+        
+    # async def runNanoShakespeare(self, length : int)->str:
+    #     '''
+    #     generates a random shakespeare snippet from a local GPT trained on shakespeare
+    #     from nanoGPT repo
+
+    #     cut the generation output to be of the input length 
+
+    #     this is duct-taped together im sorry
+    #     '''
+    #     stdout, stderr = run_bash(f'cd nanoGPT && /home/wang/anaconda3/envs/dev2-py310/bin/python sample.py --out_dir=../ml_weights/shakespeare --max_new_tokens={length}')
+    #     if len(stderr) != 0:
+    #         return f"generation failed -> {stderr}"
+    #     else:
+    #         stdout = stdout.split("\n\n")
+    #         return '\n\n'.join(stdout[1:])
+
+class PersonalAssistant:
+    '''
+    Personal assistant, interprets hard-coded and arbitrary user commands/messages
     '''
     def __init__(self):
-        # api keys
-        self.TOKEN = os.getenv('DISCORD_TOKEN')
-
-        # gpt
-        self.ChatGPT = ChatGPT()
-        self.gpt3_channel_name = self.ChatGPT.gpt3_channel_name
-        self.cmd_prefix = "!"
-
-        # stable diffusion
-        self.StableDiffusion = StableDiffusion()
-        self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
-
-        # personal assistant
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
@@ -616,56 +647,22 @@ class BMO:
         }
         self.personal_assistant_command_options = self.personal_assistant_commands.keys()
         self.help_str = constructHelpMsg(self.personal_assistant_commands)
+        self.cmd_prefix = "!"
+        self.chatgpt_name = "assistant"
 
         self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_commands}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
         self.llama_pa_toggle = False
         self.gpt_pa_prompt = f"You are a virtual assistant, бог, and the user has entered an unrecognized command. The commands that you do know are {self.personal_assistant_commands}. Help the user figure out what they want to do. You are benevolent and nice."
-        self.gpt_pa_toggle = True # enable GPT help by default
 
         # self.pa_context_queue = queue.Queue() # if empty, know that there is no current context going on TODO: use this to have more advanced talks with GPT to interact with the hard coded functionalities
 
-        # ignore any messages not in these channels
-        self.allowed_channels = [self.gpt3_channel_name, self.personal_assistant_channel, self.stable_diffusion_channel]
+        self.gpt_interpreter = ChatGPT()
+        self.llama_interpreter = LLM('llama', '7B', self.llama_pa_prompt)
 
-        # discord
-        self.intents = discord.Intents.all()
-        self.client = discord.Client(intents=self.intents)
-
-
-    ############################## local llm stuff ###############################
-    async def local_gpt_shakespeare(self, length : int)->str:
+    async def handle(self, msg : discord.message.Message, usr_msg: str) -> None:
         '''
-        generates a random shakespeare snippet from a local GPT trained on shakespeare
-        from nanoGPT repo
-
-        cut the generation output to be of the input length 
-
-        this is duct-taped together im sorry
-        '''
-        stdout, stderr = run_bash(f'cd nanoGPT && /home/wang/anaconda3/envs/dev2-py310/bin/python sample.py --out_dir=../ml_weights/shakespeare --max_new_tokens={length}')
-        if len(stderr) != 0:
-            return f"generation failed -> {stderr}"
-        else:
-            stdout = stdout.split("\n\n")
-            return '\n\n'.join(stdout[1:])
-
-    async def local_gpt_llama(self, usr_str:str)->str:
-        '''
-        given the user str help the user figure out what they want to do by using a local llama program to figure it out
-        no chatgpt here...(this is pretty bad tho if im only using 7B)
-        '''
-        input_ = f"{self.llama_pa_prompt}\n\nUser: {usr_str}\nAgent:"
-        # cmd = f'cd llama.cpp && ./main -m ./models/llama-2/13B/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
-        cmd = f'cd llama.cpp && ./main -m ./models/7B/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
-        stdout, _ = run_bash(cmd)
-        ret = stdout.split("Agent:")[1]
-        return ret
-    ############################## local llm stuff ###############################
-
-    ############################## Personal Assistant ##############################
-    async def personal_assistant_block(self, msg : discord.message.Message, usr_msg: str) -> None:
-        '''
-        Custom commands that do a particular hard-coded thing.
+        Handles the user input for one of the hard-coded commands, if unable to find a hard-coded command to fulfill request
+        will use one of the LLM interpreters available (for now local LLAMA or chatgpt)
         '''
 
         ######## PA funcs ########
@@ -766,9 +763,6 @@ class BMO:
             await _pa_modify_prompts(self, msg, usr_msg)
             return
 
-        # all commands below this are not case sensitive to the usr_msg so just lowercase it
-        usr_msg = usr_msg.lower()
-
         # remove cmd prefix if there
         if usr_msg[0] == self.cmd_prefix:
             usr_msg = usr_msg[1:]
@@ -777,38 +771,23 @@ class BMO:
         cmd = usr_msg.split(",")[0]
         if cmd not in self.personal_assistant_command_options:
             if self.llama_pa_toggle:
-                await send_msg_to_usr(msg, "Not a hard coded command, letting LLAMA interpret...")
-                await send_msg_to_usr(msg, await self.local_gpt_llama(usr_msg))
-            elif self.gpt_pa_toggle:
-                await send_msg_to_usr(msg, "Not a hard coded command, letting GPT interpret...")
-                d = { # TODO: make these params adjustable?
-                    "model": ["gpt-3.5-turbo", "str"],
-                    "messages" : [[{"role":self.chatgpt_name, "content":self.gpt_pa_prompt}], "list of dicts"],
-                    "temperature": ["0.0", "float"],
-                    "top_p": ["1.0", "float"],
-                    "frequency_penalty": ["0", "float"],
-                    "presence_penalty": ["0", "float"],
-                    "max_tokens": ["4096", "int"],
-                }
-                response = await self.gen_gpt3(usr_msg, d)
-                await send_msg_to_usr(msg, response)
+                await send_msg_to_usr(msg, await self.llama_interpreter.generate(usr_msg))
             else:
-                await send_msg_to_usr(msg, 'Unknown command, run `help`.')
+                await self.gpt_interpreter.handle(msg, usr_msg)
             return
 
-        # Allow using GPT3 to interpret unknown commands as well...
-        # it's just smarter than the small llama's I have now
-        if usr_msg == "pa_gpt":
-            self.gpt_pa_toggle = True
-            self.llama_pa_toggle = False
-            await send_msg_to_usr(msg, 'GPT interpret selected.')
-            return
-        
-        # toggle llama interpretting wrong commands
+        # all commands below this are not case sensitive to the usr_msg so just lowercase it
+        usr_msg = usr_msg.lower()
+
+        # toggle llama interpretting wrong commands instead of default gpt
+        # idk why id want this, llama is dumb
         if usr_msg == "pa_llama":
-            self.llama_pa_toggle = True
-            self.gpt_pa_toggle = False
-            await send_msg_to_usr(msg, 'LLama interpret selected.')
+            if self.llama_pa_toggle: 
+                self.llama_pa_toggle = False
+                await send_msg_to_usr(msg, 'LLama interpret deselected.')
+            else: 
+                self.llama_pa_toggle = True
+                await send_msg_to_usr(msg, 'LLama interpret selected.')
             return
 
         # list all the commands available
@@ -821,7 +800,6 @@ class BMO:
             await send_msg_to_usr(msg, "Generating...")
             await send_msg_to_usr(msg, await self.local_gpt_shakespeare(length=100))
             return
-        
 
         # Reminders based on a time
         if usr_msg[0:9] == "remind me":
@@ -847,12 +825,37 @@ class BMO:
                 await send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
             return
 
-    ############################## Personal Assistant ##############################
+# main class
+class Main:
+    '''
+    BMO is our general virtual assistant.
+    BMO does a lot of things: helps you talk to a smart LLM (GPT), handle basic daily life stuff (reminders, TODO: drafts emails, cheers for you in the fight for life),
+    creates images for you (StableDiffusion) and more!...
+    '''
+    def __init__(self):
+        # api keys
+        self.TOKEN = os.getenv('DISCORD_TOKEN')
 
+        # gpt
+        self.ChatGPT = ChatGPT()
+        self.chatgpt_channel = self.ChatGPT.gpt3_channel_name
 
-    ############################## Main Function ##############################
+        # stable diffusion
+        self.StableDiffusion = StableDiffusion()
+        self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
 
-    def run_discord_bot(self):
+        # personal assistant
+        self.PersonalAssistant = PersonalAssistant()
+        self.personal_assistant_channel = self.PersonalAssistant.personal_assistant_channel
+
+        # ignore any messages not in these channels
+        self.allowed_channels = [self.chatgpt_channel, self.personal_assistant_channel, self.stable_diffusion_channel]
+
+        # discord
+        self.intents = discord.Intents.all()
+        self.client = discord.Client(intents=self.intents)
+
+    def run(self):
         '''
         Main function
         '''
@@ -862,8 +865,6 @@ class BMO:
             '''
             When ready, load all looping functions if any.
             '''
-            await self.ChatGPT.gpt_prompt_initializer()
-            # bot is a go!
             print(f'{self.client.user} running!')
 
         ########################### ON ANY MSG ############################
@@ -889,7 +890,7 @@ class BMO:
 
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:
-                await self.personal_assistant_block(msg, usr_msg)
+                await self.PersonalAssistant.handle(msg, usr_msg)
                 return
 
             ############################## Stable Diffusion ##############################
@@ -899,12 +900,12 @@ class BMO:
 
             ############################## ChatGPT API ##############################
             # if sent in GPT_CHANNEL, send back a GPTX response
-            if channel == self.gpt3_channel_name:
+            if channel == self.chatgpt_channel:
                 await self.ChatGPT.handle(msg, usr_msg)
                 return
 
         self.client.run(self.TOKEN)
 
 if __name__ == "__main__":
-    bot = BMO()
-    bot.run_discord_bot()
+    bot = Main()
+    bot.run()
