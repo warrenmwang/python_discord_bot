@@ -13,20 +13,20 @@ class Main:
     Does a lot of things: helps you talk to a smart LLM (GPT), handle basic daily life stuff,
     creates images for you (StableDiffusion) and more!...
     '''
-    def __init__(self):
+    def __init__(self, debug : bool):
         # api keys
         self.TOKEN = os.getenv('DISCORD_TOKEN')
 
         # gpt
-        self.ChatGPT = ChatGPT()
+        self.ChatGPT = ChatGPT(debug)
         self.chatgpt_channel = self.ChatGPT.gpt3_channel_name
 
         # stable diffusion
-        self.StableDiffusion = StableDiffusion()
+        self.StableDiffusion = StableDiffusion(debug)
         self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
 
         # personal assistant
-        self.PersonalAssistant = PersonalAssistant()
+        self.PersonalAssistant = PersonalAssistant(debug)
         self.personal_assistant_channel = self.PersonalAssistant.personal_assistant_channel
 
         # ignore any messages not in these channels
@@ -85,8 +85,14 @@ class Main:
                 await self.ChatGPT.main(msg, usr_msg)
                 return
 
+            # if channel == os.getenv("DEV_CHANNEL"):
+            #     await self.ChatGPT.testFunc(msg, usr_msg)
+            #     return
+
         self.client.run(self.TOKEN)
 
 if __name__ == "__main__":
-    bot = Main()
+    debug = True
+    if debug: print(f"DEBUG: debug printing enabled")
+    bot = Main(debug)
     bot.run()

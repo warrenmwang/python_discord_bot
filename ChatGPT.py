@@ -7,27 +7,28 @@ from concurrent.futures import ThreadPoolExecutor
 from Utils import constructHelpMsg, send_msg_to_usr
 
 class ChatGPT:
-    def __init__(self):
+    def __init__(self, debug:bool):
+        self.DEBUG = debug
         openai.api_key = os.getenv("GPT3_OPENAI_API_KEY")
 
         self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
         self.gpt3_channel_id = os.getenv('GPT3_CHANNEL_ID')
+        self.gpt3_model_to_max_tokens = {
+            "gpt-4-1106-preview": [128000, "Apr 2023"], 
+            "gpt-4-vision-preview" : [128000, "Apr 2023"], 
+            "gpt-4" : [8192, "Sep 2021"]
+        }
         self.gpt3_settings = {
-            "model": ["gpt-3.5-turbo", "str"],
+            "model": ["gpt-4-vision-preview", "str"], 
             "prompt": ["", "str"],
             "messages" : [[], "list of dicts"],
             "temperature": ["0.0", "float"],
             "top_p": ["1.0", "float"],
             "frequency_penalty": ["0", "float"],
             "presence_penalty": ["0", "float"],
-            "max_tokens": ["4096", "int"],
+            "max_tokens": [128000, "int"],
         }
         self.chatgpt_name="assistant"
-        self.gpt3_model_to_max_tokens = {
-            "gpt-3.5-turbo": 4096,
-            "gpt-4": 8192,
-            "gpt-4-32k": 32768
-        }
         self.cmd_prefix = "!"
 
         # gpt prompts
@@ -63,6 +64,72 @@ class ChatGPT:
         self.gpt_read_prompts_from_file() # read the prompts from disk
         self.curr_prompt_name = self.all_gpt3_available_prompts[0] # init with first prompt
         self.gpt_context_reset()
+    
+    async def testFunc(self, msg : discord.message.Message) -> None:
+        '''
+        this function exists as a point to test out new features 
+        '''
+        print("testFunc")
+
+    async def gen_gpt_response(self, msg : discord.message.Message, settings_dict: dict = None) -> str:
+        '''
+        retrieves a GPT response given a string input and a dictionary containing the settings to use
+        returns the response str
+        '''
+        if settings_dict is None:
+            settings_dict = self.gpt3_settings
+
+        # init content with the user's message
+        content = [
+            {"type": "text",
+             "text": msg.content
+            }
+        ]
+
+        # attach images if present
+        if msg.attachments:
+            if settings_dict["model"][0] == "gpt-4-vision-preview":
+                # add the image urls to the content
+                for attachment in msg.attachments:
+                    image_dict = {"type": "image_url"}
+                    image_dict["image_url"] = attachment.url
+                    content.append(image_dict)
+            else:
+                if self.DEBUG: print(f"DEBUG: tried to attach image to non-vision model, abortting request.")
+                return "This model does not support images. Request aborted."
+
+        new_usr_msg = {
+            "role": "user",
+            "content": content
+        }
+
+        if self.DEBUG: print(f"DEBUG: {new_usr_msg=}")
+
+        ##############################
+        # update list of messages, then use it to query
+        settings_dict["messages"][0].append(new_usr_msg)
+
+        def blocking_api_call():
+            # query
+            return openai.ChatCompletion.create(
+                model = settings_dict["model"][0],
+                messages = settings_dict["messages"][0],
+                temperature = float(settings_dict["temperature"][0]),
+                top_p = float(settings_dict["top_p"][0]),
+                frequency_penalty = float(settings_dict["frequency_penalty"][0]),
+                presence_penalty = float(settings_dict["presence_penalty"][0]),
+                max_tokens = 4096
+            )
+        
+        # Run the blocking function in a separate thread using run_in_executor
+        if self.DEBUG: print(f"DEBUG: Sent to ChatGPT API: {settings_dict['messages'][0]}")
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            response = await loop.run_in_executor(executor, blocking_api_call)
+        
+        response_msg = response['choices'][0]['message']['content']
+        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {response}")
+        return response_msg
 
     ################# Entrance #################
     async def main(self, msg : discord.message.Message, usr_msg : str, quiet : bool = False) -> None:
@@ -89,7 +156,7 @@ class ChatGPT:
             self.gpt3_settings["messages"][0].pop(1)
         
         # use usr_msg to generate new response from API
-        gpt_response = await self.gen_gpt3(usr_msg)
+        gpt_response = await self.gen_gpt_response(msg)
 
         # reformat to put into messages list for future context, and save
         formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
@@ -101,29 +168,6 @@ class ChatGPT:
         return gpt_response
         
     ################# Entrance #################
-
-    # @staticmethod
-    # def oneshotPrompt(model : str, ):
-    #     # update log(list) of messages, then use it to query
-    #     settings_dict["messages"][0].append({"role": "user", "content": usr_msg})
-
-    #     def blocking_api_call():
-    #         # query
-    #         return openai.ChatCompletion.create(
-    #             model = model,
-    #             messages = settings_dict["messages"][0],
-    #             temperature = float(settings_dict["temperature"][0]),
-    #             top_p = float(settings_dict["top_p"][0]),
-    #             frequency_penalty = float(settings_dict["frequency_penalty"][0]),
-    #             presence_penalty = float(settings_dict["presence_penalty"][0]),
-    #         )
-        
-    #     # Run the blocking function in a separate thread using run_in_executor
-    #     loop = asyncio.get_event_loop()
-    #     with ThreadPoolExecutor() as executor:
-    #         response = await loop.run_in_executor(executor, blocking_api_call)
-
-    #     return response['choices'][0]['message']['content']
 
     def _setPrompt(self, prompt : str) -> None:
         '''
@@ -206,7 +250,9 @@ class ChatGPT:
         # list available models of interest
         if usr_msg == "list models":
             tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
-            return f"Available models:\n{tmp}"
+            ret_str = f"Available models:\n{tmp}" 
+            if self.DEBUG: print(f"DEBUG: !list models\n {tmp}")
+            return ret_str
 
         # show the current gpt3 prompt
         if usr_msg == "curr prompt":
@@ -216,13 +262,14 @@ class ChatGPT:
         if usr_msg == "current model":
             return f"Current model: {self.gpt3_settings['model'][0]}"
         
-        # swap between gpt3.5 and gpt4
+        # toggle which model to use (toggle between the latest gpt4 turbo and the vision model)
         if usr_msg == "swap":
             curr_model = self.gpt3_settings["model"][0]
-            if curr_model == "gpt-3.5-turbo":
-                await self.modifygptset(msg, "gptset model gpt-4")
+            if self.DEBUG: print(f"DEBUG: swap: {curr_model=}")
+            if curr_model == "gpt-4-vision-preview":
+                await self.modifygptset(msg, "gptset model gpt-4-1106-preview")
             else:
-                await self.modifygptset(msg, "gptset model gpt-3.5-turbo")
+                await self.modifygptset(msg, "gptset model gpt-4-vision-preview")
             return f'Set to: {self.gpt3_settings["model"][0]}'
 
         # add a command to add a new prompt to the list of prompts and save to file
@@ -272,6 +319,8 @@ class ChatGPT:
         # check curr convo context length
         if usr_msg == "convo len":
             return await self.get_curr_convo_len_and_approx_tokens()
+        
+        return "Unknown command."
 
     def shortcut_cmd_convertor(self, usr_msg :str) -> str:
         '''
@@ -356,36 +405,6 @@ class ChatGPT:
             ret_str += f"{msg['role']}: {msg['content']}\n" 
         return ret_str
 
-    async def gen_gpt3(self, usr_msg : str, settings_dict: dict = None) -> str:
-        '''
-        retrieves a GPT3 response given a string input and a dictionary containing the settings to use
-        returns the response str
-        '''
-
-        if settings_dict is None:
-            settings_dict = self.gpt3_settings
-
-        # update log(list) of messages, then use it to query
-        settings_dict["messages"][0].append({"role": "user", "content": usr_msg})
-
-        def blocking_api_call():
-            # query
-            return openai.ChatCompletion.create(
-                model = settings_dict["model"][0],
-                messages = settings_dict["messages"][0],
-                temperature = float(settings_dict["temperature"][0]),
-                top_p = float(settings_dict["top_p"][0]),
-                frequency_penalty = float(settings_dict["frequency_penalty"][0]),
-                presence_penalty = float(settings_dict["presence_penalty"][0]),
-            )
-        
-        # Run the blocking function in a separate thread using run_in_executor
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as executor:
-            response = await loop.run_in_executor(executor, blocking_api_call)
-
-        return response['choices'][0]['message']['content']
-
     def gptsettings(self) -> str:
         '''
         returns the available gpt3 settings, their current values, and their data types
@@ -413,7 +432,8 @@ class ChatGPT:
 
         # if setting a new model, update the max_tokens
         if setting == "model":
-            self.gpt3_settings["max_tokens"][0] = self.gpt3_model_to_max_tokens[new_val]
+            x = self.gpt3_model_to_max_tokens[new_val] # (max_tokens, date of latest date)
+            self.gpt3_settings["max_tokens"][0] = x[0]
 
     def get_all_gpt_prompts_as_str(self):
         '''

@@ -6,7 +6,8 @@ import io, base64
 from Utils import run_bash, send_msg_to_usr, send_img_to_usr
 
 class StableDiffusion:
-    def __init__(self):
+    def __init__(self, debug:bool):
+        self.DEBUG = debug
         self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
         self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
         self.stable_diffusion_toggle = False
