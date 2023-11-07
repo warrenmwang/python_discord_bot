@@ -5,6 +5,7 @@ load_dotenv()
 from LocalAI import StableDiffusion
 from ChatGPT import ChatGPT
 from PersonalAssistant import PersonalAssistant
+import argparse
 
 # main class
 class Main:
@@ -92,7 +93,13 @@ class Main:
         self.client.run(self.TOKEN)
 
 if __name__ == "__main__":
-    debug = True
+    # parse for debug flag on cli
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--debug", help="enable debug printing", action="store_true")
+    args = parser.parse_args()
+    debug = args.debug
+
+    # run
     if debug: print(f"DEBUG: debug printing enabled")
     bot = Main(debug)
     bot.run()
