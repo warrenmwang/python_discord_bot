@@ -5,6 +5,7 @@ import pickle
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from Utils import constructHelpMsg, send_msg_to_usr
+import time
 
 class ChatGPT:
     def __init__(self, debug:bool):
@@ -212,16 +213,21 @@ class ChatGPT:
                 # read the file and unpickle it
                 with open(f"./pickled_threads/{filename}", "rb") as f:
                     msgs_to_load = pickle.load(f)
-                    ret_str += f"Thread id: {filename}"
+                    ret_str += f"Thread id: {filename[:-4]}\n" # hide the file extension when displayed, its ugly
                     for tmp in msgs_to_load:
                         tmp_role = tmp["role"]
                         tmp_msg = tmp["content"]
                         ret_str += f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n"
+                    ret_str += f"{'~ '*30}"
             return ret_str
 
         # load msg log from file
         if usr_msg[:11] == "load thread":
-            thread_id = usr_msg.split(",")[1].strip()
+            tmp = usr_msg.split(",")
+            if len(tmp) != 2:
+                return "No thread id specified. usage: [load thread, THREAD_ID]"
+
+            thread_id = tmp[1].strip()
 
             if len(thread_id) == 0:
                 return "No thread id specified"
