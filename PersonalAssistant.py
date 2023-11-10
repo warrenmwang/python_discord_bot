@@ -29,29 +29,37 @@ class PersonalAssistant:
         self.gpt_interpreter = ChatGPT(debug)
         prompt = "You are a personal assistant who interprets users requests into either one of the hard coded commands that you will learn about in a second or respond accordingly to the best of your knowledge."
         prompt += f"The hard-coded commands are: {str(self.personal_assistant_commands)}"
-        prompt += "If you recognize what the user wants, output a single line that will activate the hard coded command and nothing else. Otherwise, talk."
+        prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
         self.gpt_interpreter._setPrompt(prompt)
 
         self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_commands}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
         self.llama_pa_toggle = False
         self.llama_interpreter = LLM('llama', '7B', self.llama_pa_prompt)
 
-        self.command_interpreter = CommandInterpreter()
+        self.command_interpreter = CommandInterpreter(self.help_str)
 
-    async def main(self, msg : discord.message.Message, usr_msg: str) -> None:
+    async def main(self, msg : discord.message.Message) -> str:
         '''
         Handles the user input for one of the hard-coded commands, if unable to find a hard-coded command to fulfill request
         will use one of the LLM interpreters available (for now local LLAMA or chatgpt)
+
+        Priority ORder
+        1. Hard coded commands
+        2. ChatGPT Response -> Try hard coded, otherwise send back to user
+
         '''
+        usr_msg = str(msg.content)
+
         # handle personal assistant state (if any)
         if self.personal_assistant_state == "modify prompts":
-            await self._pa_modify_prompts(self, msg, usr_msg)
-            return
+            return await self._pa_modify_prompts(self, usr_msg)
 
-        # remove cmd prefix if there
-        # orig_usr_msg = usr_msg 
-        # if usr_msg[0] == self.cmd_prefix:
-        #     usr_msg = usr_msg[1:]
+        # list all the commands available
+        if usr_msg == f"{self.cmd_prefix}help":
+            return self.help_str
+
+        if usr_msg[0] == self.cmd_prefix:
+            return await self.command_interpreter.main(msg, usr_msg[1:])
 
         # # check if user input is a hard-coded command
         # cmd = usr_msg.split(",")[0]
@@ -76,10 +84,6 @@ class PersonalAssistant:
         #         await send_msg_to_usr(msg, 'LLama interpret selected.')
         #     return
 
-        # list all the commands available
-        if usr_msg == f"{self.cmd_prefix}help":
-            await send_msg_to_usr(msg, self.help_str)
-            return
 
         # # testing out nanoGPT integration
         # if usr_msg == "shakespeare":
@@ -87,14 +91,18 @@ class PersonalAssistant:
         #     await send_msg_to_usr(msg, await self.local_gpt_shakespeare(length=100))
         #     return
 
-        await self.command_interpreter.main(msg, await self.gpt_interpreter.main(msg, usr_msg, quiet=True))
-
+        # let gpt interpret
+        gpt_response = await self.gpt_interpreter.main(msg)
+        if gpt_response[0] == self.cmd_prefix:
+            return await self.command_interpreter.main(msg, gpt_response[1:])
+        return gpt_response
 
         
 
-    async def _pa_modify_prompts(self, msg : discord.message.Message, usr_msg : str) -> None:
+    async def _pa_modify_prompts(self, usr_msg : str) -> str:
         '''
         handles changing the prompts for the personal assistant
+        returns any message needed to be sent to user
         '''
         # user can cancel at any time
         if usr_msg == "cancel":
@@ -102,72 +110,59 @@ class PersonalAssistant:
             self.personal_assistant_state = None
             self.personal_assistant_modify_prompts_state = None
             self.personal_assistant_modify_prompts_buff = []
-            await send_msg_to_usr(msg, "Ok, cancelling.")
-            return
+            return "Ok, cancelling."
 
         # Stage 1: usr picks a operator
         if self.personal_assistant_modify_prompts_state == "asked what to do":
             # check response
             if usr_msg == "edit":
                 self.personal_assistant_modify_prompts_state = "edit"
-                await send_msg_to_usr(msg, "Ok which prompt would you like to edit? [enter prompt name]")
-                return
+                return "Ok which prompt would you like to edit? [enter prompt name]"
             elif usr_msg == "add":
                 self.personal_assistant_modify_prompts_state = "add"
-                await send_msg_to_usr(msg, "Ok, write a prompt in this format: [name]<SEP>[PROMPT] w/o the square brackets.")
-                return
+                return "Ok, write a prompt in this format: [name]<SEP>[PROMPT] w/o the square brackets."
             elif usr_msg == "delete":
                 self.personal_assistant_modify_prompts_state = "delete"
-                await send_msg_to_usr(msg, "Ok, which prompt would you like to delete? [enter prompt name]")
-                return
+                return "Ok, which prompt would you like to delete? [enter prompt name]"
             elif usr_msg == "changename":
                 self.personal_assistant_modify_prompts_state = "changename"
-                await send_msg_to_usr(msg, "Ok, which prompt name would you like to rename? [enter prompt name]")
-                return
+                return "Ok, which prompt name would you like to rename? [enter prompt name]"
             else:
-                await send_msg_to_usr(msg, "Invalid response, please try again.")
-                return
+                return "Invalid response, please try again."
 
         # Stage 2: usr provides more info for an already chosen operator
         if self.personal_assistant_modify_prompts_state == "edit":
-            await send_msg_to_usr(msg, f"Ok, you said to edit {usr_msg}.\nSend me the new prompt for this prompt name. (just the new prompt in its entirety)")
             self.personal_assistant_modify_prompts_buff.append(usr_msg)
             self.personal_assistant_modify_prompts_state = "edit2"
-            return
+            return f"Ok, you said to edit {usr_msg}.\nSend me the new prompt for this prompt name. (just the new prompt in its entirety)"
         if self.personal_assistant_modify_prompts_state == "edit2":
             # update our mapping of prompt name to prompt dict, then write the new prompts to file
             prompt_name = self.personal_assistant_modify_prompts_buff.pop()
             new_prompt = usr_msg
             self.map_promptname_to_prompt[prompt_name] = new_prompt
             self.gpt_save_prompts_to_file() # write the new prompts to file
-            await send_msg_to_usr(msg, f"Updated '{prompt_name}' to '{new_prompt}'")
             self.personal_assistant_state = None
             self.personal_assistant_modify_prompts_state = None
-            return
+            return f"Updated '{prompt_name}' to '{new_prompt}'"
         if self.personal_assistant_modify_prompts_state == "add":
-            await send_msg_to_usr(msg, f"Ok, you said to add '{usr_msg}'...")
             prompt_name = usr_msg.split("<SEP>")[0]
             prompt = usr_msg.split("<SEP>")[1]
             self.map_promptname_to_prompt[prompt_name] = prompt
             self.gpt_save_prompts_to_file() # write the new prompts to file
-            await send_msg_to_usr(msg, f"Added '{prompt_name}' with prompt '{prompt}'")
             self.personal_assistant_state = None
             self.personal_assistant_modify_prompts_state = None
-            return
+            return f"Added '{prompt_name}' with prompt '{prompt}'"
         if self.personal_assistant_modify_prompts_state == "delete":
-            await send_msg_to_usr(msg, f"Ok, you said to delete '{usr_msg}'...")
             prompt_name = usr_msg
             del self.map_promptname_to_prompt[prompt_name]
             self.gpt_save_prompts_to_file() # write the new prompts to file
-            await send_msg_to_usr(msg, f"Deleted '{prompt_name}'")
             self.personal_assistant_state = None
             self.personal_assistant_modify_prompts_state = None
-            return
+            return f"Deleted '{prompt_name}'"
         if self.personal_assistant_modify_prompts_state == "changename":
             self.personal_assistant_modify_prompts_buff.append(usr_msg)
             self.personal_assistant_modify_prompts_state = "changename2"
-            await send_msg_to_usr(msg, f"Ok, what would you like to change the {usr_msg} to?")
-            return
+            return f"Ok, what would you like to change the {usr_msg} to?"
         if self.personal_assistant_modify_prompts_state == "changename2":
             prompt_name = self.personal_assistant_modify_prompts_buff.pop()
             new_prompt_name = usr_msg
@@ -175,7 +170,6 @@ class PersonalAssistant:
             del self.map_promptname_to_prompt[prompt_name]
             self.map_promptname_to_prompt[new_prompt_name] = prompt
             self.gpt_save_prompts_to_file() # write the new prompts to file
-            await send_msg_to_usr(msg, f"Changed '{prompt_name}' to '{new_prompt_name}'")
             self.personal_assistant_state = None
             self.personal_assistant_modify_prompts_state = None
-            return
+            return  f"Changed '{prompt_name}' to '{new_prompt_name}'"

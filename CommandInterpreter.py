@@ -7,8 +7,8 @@ class CommandInterpreter:
     Tries to interpret inputs as commands and perform the action requested
     If the action is not found to be a hard-coded command, reply the "command" or gpt response to user.
     '''
-    def __init__(self):
-        pass
+    def __init__(self, help_str : str):
+        self.help_str = help_str
 
     async def main(self, msg : discord.message.Message, command : str) -> None:
         '''
@@ -37,6 +37,8 @@ class CommandInterpreter:
             except Exception as e:
                 await send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
             return
+
+        if command == "help":
+            return self.help_str
     
-        # not a hard coded command, send the gpt response to user
-        await send_msg_to_usr(msg, command)
+        return "Uknown command."

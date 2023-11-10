@@ -18,6 +18,8 @@ async def send_msg_to_usr(msg : discord.message.Message, usr_msg : str) -> None:
     in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
     the damn message (whether it be one or multiple messages)
     '''
+    if not isinstance(usr_msg, str): return # do nothing if input is not a string
+
     diff = len(usr_msg)
     start = 0
     end = DISCORD_MSGLEN_CAP

@@ -6,6 +6,7 @@ from LocalAI import StableDiffusion
 from ChatGPT import ChatGPT
 from PersonalAssistant import PersonalAssistant
 import argparse
+from Utils import send_msg_to_usr
 
 # main class
 class Main:
@@ -56,8 +57,6 @@ class Main:
             '''
             Entrance function for any message sent to any channel in the guild/server.
             '''
-            # username = str(msg.author)
-            usr_msg = str(msg.content)
             channel = str(msg.channel)
 
             ############################## Checks for not doing anything ##############################
@@ -72,19 +71,16 @@ class Main:
 
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:
-                await self.PersonalAssistant.main(msg, usr_msg)
-                return
+                return await send_msg_to_usr(msg, await self.PersonalAssistant.main(msg))
 
             ############################## Stable Diffusion ##############################
             if channel == self.stable_diffusion_channel:
-                await self.StableDiffusion.main(msg, usr_msg)
-                return
+                return await self.StableDiffusion.main(msg)
 
             ############################## ChatGPT API ##############################
             # if sent in GPT_CHANNEL, send back a GPTX response
             if channel == self.chatgpt_channel:
-                await self.ChatGPT.main(msg, usr_msg)
-                return
+                return await send_msg_to_usr(msg, await self.ChatGPT.main(msg))
 
             # if channel == os.getenv("DEV_CHANNEL"):
             #     await self.ChatGPT.testFunc(msg, usr_msg)

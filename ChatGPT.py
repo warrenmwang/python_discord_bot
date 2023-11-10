@@ -4,7 +4,7 @@ import discord
 import pickle
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from Utils import constructHelpMsg, send_msg_to_usr
+from Utils import constructHelpMsg
 import time
 
 class ChatGPT:
@@ -133,20 +133,17 @@ class ChatGPT:
         return response_msg
 
     ################# Entrance #################
-    async def main(self, msg : discord.message.Message, usr_msg : str, quiet : bool = False) -> None:
+    async def main(self, msg : discord.message.Message) -> str:
         '''
         Entrance function for all ChatGPT API things.
         Either modifies the parameters or generates a response based off of current context and new user message.
         Returns the generation.
-
-        quiet - just return output, don't send to user, False by default (so default is to send message to user)
         '''
+        usr_msg = str(msg.content)
         # catch if is a command
         if usr_msg[0] == self.cmd_prefix:
             # pass to PA block without the prefix
-            output = await self.modifyParams(msg, usr_msg[1:])
-            if not quiet: await send_msg_to_usr(msg, output)
-            return output
+            return await self.modifyParams(msg, usr_msg[1:])
 
         # check to see if we are running out of tokens for current msg log
         # get the current thread length
@@ -162,9 +159,6 @@ class ChatGPT:
         # reformat to put into messages list for future context, and save
         formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
         self.gpt3_settings["messages"][0].append(formatted_response)
-
-        # send the response to the user
-        if not quiet: await send_msg_to_usr(msg, gpt_response)
 
         return gpt_response
         
@@ -185,13 +179,13 @@ class ChatGPT:
     async def modifyParams(self, msg : discord.message.Message, usr_msg : str) -> str:
         '''
         Modifies ChatGPT API params.
+        Returns the output of an executed command or returns an error/help message.
         '''
         # convert shortcut to full command if present
         usr_msg = self.shortcut_cmd_convertor(usr_msg)
 
         # help
-        if usr_msg == "help":
-            return self.commands_help_str
+        if usr_msg == "help": return self.commands_help_str
 
         # save current msg log to file 
         if usr_msg == "save thread":
@@ -204,7 +198,7 @@ class ChatGPT:
             with open(f"./pickled_threads/{curr_time}.pkl", "wb") as f:
                 pickle.dump(msgs_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
             return f"Saved thread to file as {curr_time}.pkl"
-
+ 
         # show old threads that have been saved
         if usr_msg == "show old threads":
             ret_str = ""
@@ -365,12 +359,14 @@ class ChatGPT:
         ''' 
         Executes both gptset and gptsettings (to print out the new gpt api params for the next call)
         expect format: gptset [setting_name] [new_value]
+
+        Returns None if ok, else returns a error msg string.
         '''
         try:
             self.gptset(usr_msg, self.gpt3_settings)
         except Exception as e:
-            await send_msg_to_usr(msg, "gptset: gptset [setting_name] [new_value]")
-        return 
+            return "gptset: gptset [setting_name] [new_value]"
+        return None
     
     def gpt_save_prompts_to_file(self) -> None:
         '''
