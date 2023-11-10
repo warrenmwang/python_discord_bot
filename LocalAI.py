@@ -3,7 +3,7 @@ import discord
 import requests
 from PIL import Image
 import io, base64
-from Utils import run_bash, send_msg_to_usr, send_img_to_usr
+from Utils import run_bash, send_msg_to_usr, send_img_to_usr, constructHelpMsg
 
 class StableDiffusion:
     def __init__(self, debug:bool):
@@ -12,11 +12,19 @@ class StableDiffusion:
         self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
         self.stable_diffusion_toggle = False
         self.cmd_prefix = "!"
+        self.help_dict = {
+                "help": "show this message",
+                "on": "load model to GPU",
+                "off": "unload model from GPU",
+                "status": "display if model is loaded or not"
+        }
+        self.help_str = constructHelpMsg(self.help_dict)
 
-    async def main(self, msg : discord.message.Message, usr_msg : str) -> None:
+    async def main(self, msg : discord.message.Message) -> None:
         '''
         Entrance function into doing anything with stable diffusion.
         '''
+        usr_msg = str(msg.content)
         # cmd (help, status, on, off)
         if usr_msg[0] == self.cmd_prefix:
             usr_msg = usr_msg[1:].lower()
@@ -35,7 +43,7 @@ class StableDiffusion:
                 await send_msg_to_usr(msg, 'Turning on SD (wait like 5 seconds for it to load)...')
                 self.stable_diffusion_toggle = True
             elif usr_msg == 'help':
-                await send_msg_to_usr(msg, '!help - show this message\n!on - load model to GPU\n!off - unload model from GPU\n!status - display if model is loaded or not')
+                await send_msg_to_usr(msg, self.help_str)
             else:
                 await send_msg_to_usr(msg, 'use !help for help')
             return
