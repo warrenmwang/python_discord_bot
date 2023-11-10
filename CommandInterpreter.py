@@ -1,19 +1,27 @@
+import os
 from Utils import send_msg_to_usr
+from ChatGPT import Dalle
 import discord
 import asyncio
+from Utils import send_img_to_usr
 
 class CommandInterpreter:
     '''
     Tries to interpret inputs as commands and perform the action requested
     If the action is not found to be a hard-coded command, reply the "command" or gpt response to user.
     '''
-    def __init__(self, help_str : str):
+    def __init__(self, help_str : str, debug : bool = False):
+        self.DEBUG = debug
         self.help_str = help_str
+        self.dalle = Dalle(debug)
+        self.dalle_output_path = os.getenv("DALLE_OUTPUT_PATH")
 
     async def main(self, msg : discord.message.Message, command : str) -> None:
         '''
         tries to map the usr_msg to a functionality
         at this point, chatgpt should've interpretted any user command into one of these formats
+
+        Assumes: command does NOT have a command prefix symbol.
         '''
         if command[0:9] == "remind me":
             try:
@@ -40,5 +48,15 @@ class CommandInterpreter:
 
         if command == "help":
             return self.help_str
+
+        if command[0:4] == "draw":
+            # draw images using dalle api
+            # for now, keep things simple with just the word draw semicolon and then the prompt
+            prompt = command.split(";")[1].strip() # parse prompt out of command, assumes NO SEMICOLONS in prompt lol
+            await send_msg_to_usr(msg, f"Creating an image of `{prompt}`")
+            image = await self.dalle.main(prompt)
+            image.save(self.dalle_output_path)
+            await send_img_to_usr(msg, self.dalle_output_path)
+            return 
     
         return "Uknown command."

@@ -21,6 +21,7 @@ class PersonalAssistant:
             "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
             "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
             # 'shakespeare': 'generate a random snippet of shakespeare'
+            'draw': "format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3"
         }
         self.personal_assistant_command_options = self.personal_assistant_commands.keys()
         self.help_str = constructHelpMsg(self.personal_assistant_commands)
@@ -43,7 +44,7 @@ class PersonalAssistant:
         Handles the user input for one of the hard-coded commands, if unable to find a hard-coded command to fulfill request
         will use one of the LLM interpreters available (for now local LLAMA or chatgpt)
 
-        Priority ORder
+        Priority Order
         1. Hard coded commands
         2. ChatGPT Response -> Try hard coded, otherwise send back to user
 

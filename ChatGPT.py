@@ -1,4 +1,5 @@
 import openai
+from openai import OpenAI
 import os
 import discord
 import pickle
@@ -6,12 +7,49 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from Utils import constructHelpMsg
 import time
+from PIL import Image
+import io, base64
+
+class Dalle:
+    def __init__(self, debug:bool):
+        self.DEBUG = debug
+        # openai.api_key = os.getenv("GPT3_OPENAI_API_KEY")
+        self.model = "dall-e-3"
+        self.client = OpenAI()
+
+    # TODO: there's also option to allow editing of images only with DALLE2 model
+        
+    async def main(self, prompt : str) -> Image:
+        '''
+        Create an image using Dalle from openai and return it as a base64-encoded image
+        '''
+        def blocking_api_call():
+            return self.client.images.generate(
+                        model = self.model,
+                        prompt = prompt,
+                        size = "1024x1024",
+                        quality = "standard",
+                        response_format = "b64_json",
+                        n = 1,
+                    )
+
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            response = await loop.run_in_executor(executor, blocking_api_call)
+
+        # decode from base 64 json into image
+        encoded_img = response.data[0].b64_json
+        image = Image.open(io.BytesIO(base64.b64decode(encoded_img)))
+
+        # return image
+        return image
+
 
 class ChatGPT:
     def __init__(self, debug:bool):
         self.DEBUG = debug
-        openai.api_key = os.getenv("GPT3_OPENAI_API_KEY")
 
+        self.client = OpenAI()
         self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
         self.gpt3_channel_id = os.getenv('GPT3_CHANNEL_ID')
         self.gpt3_model_to_max_tokens = {
@@ -112,7 +150,7 @@ class ChatGPT:
 
         def blocking_api_call():
             # query
-            return openai.ChatCompletion.create(
+            return self.client.chat.completions.create(
                 model = settings_dict["model"][0],
                 messages = settings_dict["messages"][0],
                 temperature = float(settings_dict["temperature"][0]),
@@ -126,9 +164,9 @@ class ChatGPT:
         if self.DEBUG: print(f"DEBUG: Sent to ChatGPT API: {settings_dict['messages'][0]}")
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
-            response = await loop.run_in_executor(executor, blocking_api_call)
+            completion = await loop.run_in_executor(executor, blocking_api_call)
         
-        response_msg = response['choices'][0]['message']['content']
+        response_msg = completion.choices[0].message.content
         if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {response}")
         return response_msg
 
