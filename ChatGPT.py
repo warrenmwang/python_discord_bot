@@ -178,10 +178,12 @@ class ChatGPT:
         Returns the generation.
         '''
         usr_msg = str(msg.content)
-        # catch if is a command
-        if usr_msg[0] == self.cmd_prefix:
-            # pass to PA block without the prefix
-            return await self.modifyParams(msg, usr_msg[1:])
+        if len(usr_msg) > 0:
+            # catch if is a command
+            if usr_msg[0] == self.cmd_prefix:
+                if len(usr_msg) == 1: return "Empty command provided."
+                # pass to PA block without the prefix
+                return await self.modifyParams(msg, usr_msg[1:])
 
         # check to see if we are running out of tokens for current msg log
         # get the current thread length
