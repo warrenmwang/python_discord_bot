@@ -4,6 +4,7 @@ import os
 import discord
 import pickle
 import asyncio
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from Utils import constructHelpMsg
 import time
@@ -130,12 +131,22 @@ class ChatGPT:
             if settings_dict["model"][0] == "gpt-4-vision-preview":
                 # add the image urls to the content
                 for attachment in msg.attachments:
-                    image_dict = {"type": "image_url"}
-                    image_dict["image_url"] = attachment.url
-                    content.append(image_dict)
+                    if not attachment.filename.endswith('.txt'):
+                        image_dict = {"type": "image_url"}
+                        image_dict["image_url"] = attachment.url
+                        content.append(image_dict)
             else:
                 if self.DEBUG: print(f"DEBUG: tried to attach image to non-vision model, abortting request.")
                 return "This model does not support images. Request aborted."
+        
+        # put any text files as part of the thread
+        if msg.attachments:
+            for attachment in msg.attachments:
+                if attachment.filename.endswith('.txt'):
+                    # Download the attachment
+                    file_content = requests.get(attachment.url).text
+                    # append to text data to be sent
+                    content[0]['text'] = content[0]['text'] + file_content
 
         new_usr_msg = {
             "role": "user",
@@ -167,7 +178,7 @@ class ChatGPT:
             completion = await loop.run_in_executor(executor, blocking_api_call)
         
         response_msg = completion.choices[0].message.content
-        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {response}")
+        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {response_msg}")
         return response_msg
 
     ################# Entrance #################
