@@ -126,27 +126,21 @@ class ChatGPT:
             }
         ]
 
-        # attach images if present
-        if msg.attachments:
-            if settings_dict["model"][0] == "gpt-4-vision-preview":
-                # add the image urls to the content
-                for attachment in msg.attachments:
-                    if not attachment.filename.endswith('.txt'):
-                        image_dict = {"type": "image_url"}
-                        image_dict["image_url"] = attachment.url
-                        content.append(image_dict)
-            else:
-                if self.DEBUG: print(f"DEBUG: tried to attach image to non-vision model, abortting request.")
-                return "This model does not support images. Request aborted."
-        
-        # put any text files as part of the thread
+        # attachments (NOTE: currently assumes only 2 types of attachments (.txt or images (idk what filetype discord uses)))
         if msg.attachments:
             for attachment in msg.attachments:
+                # put any text files as part of the thread
                 if attachment.filename.endswith('.txt'):
                     # Download the attachment
                     file_content = requests.get(attachment.url).text
                     # append to text data to be sent
                     content[0]['text'] = content[0]['text'] + file_content
+
+                # only put image files if model is a vision model
+                if not attachment.filename.endswith('.txt') and settings_dict["model"][0] == "gpt-4-vision-preview":
+                    image_dict = {"type": "image_url"}
+                    image_dict["image_url"] = attachment.url
+                    content.append(image_dict)
 
         new_usr_msg = {
             "role": "user",
