@@ -3,7 +3,7 @@ import discord
 import requests
 from PIL import Image
 import io, base64
-from Utils import run_bash, send_msg_to_usr, send_img_to_usr, constructHelpMsg
+from Utils import run_bash, send_msg_to_usr, send_file_to_usr, constructHelpMsg
 
 class StableDiffusion:
     def __init__(self, debug:bool):
@@ -124,7 +124,7 @@ class StableDiffusion:
         for i in r['images']:
             image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
             image.save(self.stable_diffusion_output_dir)
-            await send_img_to_usr(msg, self.stable_diffusion_output_dir)
+            await send_file_to_usr(msg, self.stable_diffusion_output_dir)
 
     async def sd_load_model(self):
         '''

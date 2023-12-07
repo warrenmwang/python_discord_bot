@@ -83,9 +83,7 @@ class ChatGPT:
             "reset thread" : 'reset gpt3 context length',
             "show thread" : 'show the entire current convo context',
             "gptsettings" : 'show the current gpt3 settings',
-            # "gptreplsettings" : 'show gpt3 repl settings',
             "gptset": "format is `gptset, [setting_name], [new_value]` modify gpt3 settings",
-            # "gptreplset": "format is `gptreplset, [setting_name], [new_value]` modify gpt3 repl settings",
             "curr prompt": "get the current prompt name",
             "change prompt": "format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)",
             "show prompts": "show the available prompts for gpt3",
@@ -103,6 +101,7 @@ class ChatGPT:
         # initialize prompts
         self.gpt_read_prompts_from_file() # read the prompts from disk
         self.curr_prompt_name = self.all_gpt3_available_prompts[0] # init with first prompt
+        self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
         self.gpt_context_reset()
     
     async def testFunc(self, msg : discord.message.Message) -> None:
@@ -213,6 +212,7 @@ class ChatGPT:
         '''
         set the prompt for the model and update the messages settings dict
         '''
+        self.curr_prompt_str = prompt
         self.gpt3_settings["prompt"][0] = prompt
         l = self.gpt3_settings["messages"][0]
         if len(l) == 0:
@@ -441,7 +441,7 @@ class ChatGPT:
         > can be used at the start of program run and whenever a reset is wanted
         '''
         self.gpt3_settings["messages"][0] = [] # reset messages, should be gc'd
-        self.gpt3_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.map_promptname_to_prompt[self.curr_prompt_name]})
+        self.gpt3_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.curr_prompt_str})
     
     async def get_curr_gpt_thread(self) -> str:
         '''
@@ -470,8 +470,6 @@ class ChatGPT:
         
         e.g.
         usr_msg = prompt, "bob the builder loves to build"
-
-        # FIXME: allow prompt editing
         '''
         tmp = usr_msg.split()
         setting, new_val = tmp[1], tmp[2]

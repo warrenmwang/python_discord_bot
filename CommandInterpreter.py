@@ -3,7 +3,7 @@ from Utils import send_msg_to_usr
 from ChatGPT import Dalle
 import discord
 import asyncio
-from Utils import send_img_to_usr
+from Utils import send_file_to_usr, find_text_between_markers, delete_file
 
 class CommandInterpreter:
     '''
@@ -52,11 +52,29 @@ class CommandInterpreter:
         if command[0:4] == "draw":
             # draw images using dalle api
             # for now, keep things simple with just the word draw semicolon and then the prompt
-            prompt = command.split(";")[1].strip() # parse prompt out of command, assumes NO SEMICOLONS in prompt lol
-            await send_msg_to_usr(msg, f"Creating an image of `{prompt}`")
-            image = await self.dalle.main(prompt)
-            image.save(self.dalle_output_path)
-            await send_img_to_usr(msg, self.dalle_output_path)
-            return 
+            try:
+                prompt = command.split(";")[1].strip() # parse prompt out of command, assumes NO SEMICOLONS in prompt lol
+                await send_msg_to_usr(msg, f"Creating an image of `{prompt}`")
+                image = await self.dalle.main(prompt)
+                image.save(self.dalle_output_path)
+                await send_file_to_usr(msg, self.dalle_output_path)
+                return 
+            except Exception as error:
+                return error
+
+        #### "HIDDEN COMMANDS"
     
-        return "Uknown command."
+        if command[0:15] == '_attachTextFile':
+            # attaches text file(s) for the contents in between the markers <CODESTART> and <CODEEND>
+            codeFilePath = "/tmp/discord_code_tmp.txt"
+            code = find_text_between_markers(command, start_marker="<CODESTART>", end_marker="<CODEEND>")
+            for c in code:
+                with open(codeFilePath, "w") as file:
+                    file.write(c)
+                await send_file_to_usr(msg, codeFilePath)
+            delete_file(codeFilePath)
+            # returns any commentary denoted by <COMMENTSTART> and <COMMENTEND>
+            comment = find_text_between_markers(command, start_marker="<COMMENTSTART>", end_marker="<COMMENTEND>")
+            return "\n".join(comment)
+
+        return "Unknown command."

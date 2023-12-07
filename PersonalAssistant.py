@@ -20,8 +20,8 @@ class PersonalAssistant:
             "help": "show this message",
             "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
             "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
-            # 'shakespeare': 'generate a random snippet of shakespeare'
-            'draw': "format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3"
+            'draw': "format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3",
+            '_attachTextFile': "Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. format is `_attachTextFile [commentary] [code]`"
         }
         self.personal_assistant_command_options = self.personal_assistant_commands.keys()
         self.help_str = constructHelpMsg(self.personal_assistant_commands)
@@ -46,8 +46,8 @@ class PersonalAssistant:
 
         Priority Order
         1. Hard coded commands
+        2. GPT Interpreter Settings
         2. ChatGPT Response -> Try hard coded, otherwise send back to user
-
         '''
         usr_msg = str(msg.content)
 
@@ -57,40 +57,17 @@ class PersonalAssistant:
 
         # list all the commands available
         if usr_msg == f"{self.cmd_prefix}help":
-            return self.help_str
+            return f"PA Commands:\n{self.help_str}\nGPT Commands:\n{await self.gpt_interpreter.main(msg)}"
 
+        # hard coded commands
         if usr_msg[0] == self.cmd_prefix:
-            return await self.command_interpreter.main(msg, usr_msg[1:])
-
-        # # check if user input is a hard-coded command
-        # cmd = usr_msg.split(",")[0]
-        # if cmd not in self.personal_assistant_command_options:
-        #     if self.llama_pa_toggle:
-        #         await send_msg_to_usr(msg, await self.llama_interpreter.generate(usr_msg))
-        #     else:
-        #         await send_msg_to_usr(msg, self.gpt_interpreter.main(msg, usr_msg))
-        #     return
-
-        # all commands below this are not case sensitive to the usr_msg so just lowercase it
-        # usr_msg = usr_msg.lower()
-
-        # toggle llama interpretting wrong commands instead of default gpt
-        # idk why id want this, llama is dumb
-        # if usr_msg == "pa_llama":
-        #     if self.llama_pa_toggle: 
-        #         self.llama_pa_toggle = False
-        #         await send_msg_to_usr(msg, 'LLama interpret deselected.')
-        #     else: 
-        #         self.llama_pa_toggle = True
-        #         await send_msg_to_usr(msg, 'LLama interpret selected.')
-        #     return
-
-
-        # # testing out nanoGPT integration
-        # if usr_msg == "shakespeare":
-        #     await send_msg_to_usr(msg, "Generating...")
-        #     await send_msg_to_usr(msg, await self.local_gpt_shakespeare(length=100))
-        #     return
+            x = await self.command_interpreter.main(msg, usr_msg[1:])
+            if x != "Unknown command.":
+                return x
+            # see if it's a gpt modify command
+            gpt_response = await self.gpt_interpreter.main(msg)
+            if gpt_response != "Unknown command.":
+                return gpt_response
 
         # let gpt interpret
         gpt_response = await self.gpt_interpreter.main(msg)

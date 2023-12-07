@@ -1,5 +1,7 @@
 import discord
 import subprocess
+import re
+import os
 
 # CONSTANTS
 DISCORD_MSGLEN_CAP=2000
@@ -29,9 +31,9 @@ async def send_msg_to_usr(msg : discord.message.Message, usr_msg : str) -> None:
         end += DISCORD_MSGLEN_CAP
         diff -= DISCORD_MSGLEN_CAP
 
-async def send_img_to_usr(msg : discord.message.Message, imgPath : str) -> None:
+async def send_file_to_usr(msg : discord.message.Message, filePath : str) -> None:
     '''given the image path in the filesystem, send it to the author of the msg'''
-    await msg.channel.send(file=discord.File(imgPath))
+    await msg.channel.send(file=discord.File(filePath))
 
 def constructHelpMsg(d : dict)->str:
     '''
@@ -56,3 +58,12 @@ def constructHelpMsg(d : dict)->str:
     help_str += '```'
 
     return help_str
+
+def find_text_between_markers(text:str, start_marker:str="<START>", end_marker:str="<END>")->str:
+    pattern = re.escape(start_marker) + "(.*?)" + re.escape(end_marker)
+    matches = re.findall(pattern, text, re.DOTALL)
+    return matches
+
+def delete_file(filepath:str)->None:
+    if os.path.exists(filepath):
+        os.remove(filepath)
