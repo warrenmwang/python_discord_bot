@@ -75,6 +75,6 @@ class CommandInterpreter:
             delete_file(codeFilePath)
             # returns any commentary denoted by <COMMENTSTART> and <COMMENTEND>
             comment = find_text_between_markers(command, start_marker="<COMMENTSTART>", end_marker="<COMMENTEND>")
-            return "\n".join(comment)
+            return "\n".join(comment)+"End of Request."
 
         return "Unknown command."

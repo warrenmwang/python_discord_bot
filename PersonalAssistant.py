@@ -21,7 +21,7 @@ class PersonalAssistant:
             "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
             "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
             'draw': "format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3",
-            '_attachTextFile': "Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. format is `_attachTextFile [commentary] [code]`"
+            '_attachTextFile': "Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. DO NOT PUT EVERYTHING INTO A SINGLE LINE, use newlines, tabs, normal code formatting. format is `_attachTextFile [commentary] [code]` where each section can span multiple lines."
         }
         self.personal_assistant_command_options = self.personal_assistant_commands.keys()
         self.help_str = constructHelpMsg(self.personal_assistant_commands)

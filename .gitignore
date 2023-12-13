@@ -6,3 +6,4 @@ pickled_threads/
 runme.sh
 .dockerignore
 cron_start.sh
+testing/

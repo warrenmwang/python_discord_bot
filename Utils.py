@@ -36,9 +36,7 @@ async def send_file_to_usr(msg : discord.message.Message, filePath : str) -> Non
     await msg.channel.send(file=discord.File(filePath))
 
 def constructHelpMsg(d : dict)->str:
-    '''
-    Stringify the dictionary of commands and their descriptions
-    '''
+    '''Stringify the dictionary of commands and their descriptions'''
     help_str = '```'
 
     # initially construct the strings
@@ -59,11 +57,13 @@ def constructHelpMsg(d : dict)->str:
 
     return help_str
 
-def find_text_between_markers(text:str, start_marker:str="<START>", end_marker:str="<END>")->str:
+def find_text_between_markers(text:str, start_marker:str="<START>", end_marker:str="<END>")->list[str]:
+    '''Finds the text between the start and end markers in the given text'''
     pattern = re.escape(start_marker) + "(.*?)" + re.escape(end_marker)
     matches = re.findall(pattern, text, re.DOTALL)
     return matches
 
 def delete_file(filepath:str)->None:
+    '''Delete the file at the given filepath if it exists'''
     if os.path.exists(filepath):
         os.remove(filepath)
