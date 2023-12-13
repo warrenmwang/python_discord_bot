@@ -1,18 +1,45 @@
-# Jarvis discord bot
+# AI-Powered Discord ChatBot
 Honestly I'm just trying to see what it's like to make a discord bot with an amalgamation of random functionalities and seeing if it's useful. "One bot to rule them all" kind of feel.
 
 ## What does this do?
+- Discord chat interface for ChatGPT API models (e.g. gpt-4-1106-preview, gpt-4-vision-preview, dalle3, etc.) from OpenAI
+  - talk directly with your `.txt` and `.png` files!
+  - example commands (as of 12/13/2023):
+  ```
+  PA Commands:
+  help             - show this message
+  pa_llama         - toggle the use of a llama model to interpret an unknown command (huge WIP)
+  remind me        - format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time
+  draw             - format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3
+  _attachTextFile  - Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. DO NOT PUT EVERYTHING INTO A SINGLE LINE, use newlines, tabs, normal code formatting. format is `_attachTextFile [commentary] [code]` where each section can span multiple lines.
+
+  GPT Commands:
+  help              - display this message
+  convo len         - show current gpt3 context length
+  reset thread      - reset gpt3 context length
+  show thread       - show the entire current convo context
+  gptsettings       - show the current gpt3 settings
+  gptset            - format is `gptset, [setting_name], [new_value]` modify gpt3 settings
+  curr prompt       - get the current prompt name
+  change prompt     - format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)
+  show prompts      - show the available prompts for gpt3
+  list models       - list the available gpt models
+  modify prompts    - modify the prompts for gpt
+  save thread       - save the current gptX thread to a file
+  show old threads  - show the old threads that have been saved
+  load thread       - format is `load thread, [unique id]` load a gptX thread from a file
+  delete thread     - format is `delete thread, [unique id]` delete a gptX thread from a file
+  current model     - show the current gpt model
+  swap              - swap between gpt3.5 and gpt4 (regular)
+  ```
 - Convenience access to a local stable diffusion server (use automatic1111 with `--api` flag)
-- Random ml stuff I throw together to learn what it's like integrating that stuff into a discord bot
-- Convenience ui for GPT-3.5-turbo / GPT-4 from OpenAI
-  Create your own random commands to improve your workflow if needed (I have some for prompt switching, saving threads, changing generation settings, etc.)
 
 ## Quick setup (using pip/conda)
 1. Prerequisites:
  - Discord Account
  - New Application for Discord Bot on Discord Developer Portal
  - Invited your new bot into your discord server
-   - Any YouTube video can help you, I literally started with this [video](https://www.youtube.com/watch?v=hoDLj0IzZMU) for this project
+   - Help: [video](https://www.youtube.com/watch?v=hoDLj0IzZMU) 
 2. Clone/fork this repo
 3. `cd` into the repo
 4. `pip install -r requirements`
@@ -21,9 +48,9 @@ Honestly I'm just trying to see what it's like to make a discord bot with an ama
 8. Start talking!
 9. Well, you'll need other stuff if you want to run the ml stuff, you can figure that out :)
 
-## The submodules
-### [Stable Diffusion Webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
-Git submodules should get the repo for you, and it should just work because it runs `webui.sh` with some command line params that creates your `venv` when you run it the first time. All times after the first run should be fast. I decided to just run it in a `tmux` session, but maybe that's bad design but hey the linux platform has so many nice tools, why not use them amirite.
+## Other Dependencies...
+- StableDiffusion (yes it's integrated, but it's really hacky, uses old automatic1111 api server and makes http requests to local server for prompting and generating/retrieving images)
+  - > haven't fixed the submodules dependency, so don't plan on stable diffusion working rn
 
-### [nanoGPT](https://github.com/karpathy/nanoGPT/tree/master)
-Look at the README in that repo to train up whatever parrot mini transformer model to replicate the text of and modify the hard-coded shell command to point to the python installation with the packages needed to run that -- that would be a thing you have to do :)
+## Future Plans
+- vector database for custom user data that didn't exist in original llm training set to query about
