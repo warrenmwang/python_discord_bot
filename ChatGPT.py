@@ -1,4 +1,3 @@
-import openai
 from openai import OpenAI
 import os
 import discord
@@ -6,7 +5,7 @@ import pickle
 import asyncio
 import requests
 from concurrent.futures import ThreadPoolExecutor
-from Utils import constructHelpMsg
+from Utils import constructHelpMsg, read_pdf, delete_file
 import time
 from PIL import Image
 import io, base64
@@ -19,6 +18,7 @@ class Dalle:
         self.client = OpenAI()
 
     # TODO: there's also option to allow editing of images only with DALLE2 model
+    # note however that inpatining/outpainting requires us manually generating a mask and using that mask to edit the image
         
     async def main(self, prompt : str) -> Image:
         '''
@@ -49,6 +49,7 @@ class Dalle:
 class ChatGPT:
     def __init__(self, debug:bool):
         self.DEBUG = debug
+        self.tmp_dir = "./tmp"
 
         self.client = OpenAI()
         self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
@@ -87,7 +88,7 @@ class ChatGPT:
             "curr prompt": "get the current prompt name",
             "change prompt": "format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)",
             "show prompts": "show the available prompts for gpt3",
-            "list models": "list the available gpt models",
+            "models": "list the available gpt models",
             "modify prompts": "modify the prompts for gpt",
             "save thread": "save the current gptX thread to a file",
             "show old threads": "show the old threads that have been saved",
@@ -104,12 +105,6 @@ class ChatGPT:
         self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
         self.gpt_context_reset()
     
-    async def testFunc(self, msg : discord.message.Message) -> None:
-        '''
-        this function exists as a point to test out new features 
-        '''
-        print("testFunc")
-
     async def gen_gpt_response(self, msg : discord.message.Message, settings_dict: dict = None) -> str:
         '''
         retrieves a GPT response given a string input and a dictionary containing the settings to use
@@ -118,6 +113,8 @@ class ChatGPT:
         if settings_dict is None:
             settings_dict = self.gpt3_settings
 
+        response_msg = ""
+
         # init content with the user's message
         content = [
             {"type": "text",
@@ -125,21 +122,37 @@ class ChatGPT:
             }
         ]
 
-        # attachments (NOTE: currently assumes only 2 types of attachments (.txt or images (idk what filetype discord uses)))
+        # attachments 
         if msg.attachments:
             for attachment in msg.attachments:
-                # put any text files as part of the thread
-                if attachment.filename.endswith('.txt'):
-                    # Download the attachment
-                    file_content = requests.get(attachment.url).text
-                    # append to text data to be sent
-                    content[0]['text'] = content[0]['text'] + file_content
+                # text files (plain text and code)
+                text_file_formats = ['.txt', '.c', '.cpp', '.py', '.java', '.js', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md']
+                for file_format in text_file_formats:
+                    if attachment.filename.endswith(file_format):
+                        # Download the attachment
+                        file_content = requests.get(attachment.url).text
+                        # append to text data to be sent
+                        content[0]['text'] = content[0]['text'] + "\nFILE CONTENTS:\n" + file_content
 
-                # only put image files if model is a vision model
-                if not attachment.filename.endswith('.txt') and settings_dict["model"][0] == "gpt-4-vision-preview":
-                    image_dict = {"type": "image_url"}
-                    image_dict["image_url"] = attachment.url
-                    content.append(image_dict)
+                # images (png's)
+                if attachment.filename.endswith('.png'):
+                    if settings_dict["model"][0] == "gpt-4-vision-preview":
+                        image_dict = {"type": "image_url"}
+                        image_dict["image_url"] = attachment.url
+                        content.append(image_dict)
+                    else:
+                        response_msg += f"Discarded image (current model is not an image model): {attachment.filename}\n"
+                
+                # pdfs (scrape text from them, just discard images in pdf...)
+                # TODO: OCR pdfs that don't have easily scrapeable text?
+                if attachment.filename.endswith('.pdf'):
+                    response = requests.get(attachment.url) # download pdf
+                    pdf_file = f"{self.tmp_dir}/tmp.pdf"
+                    with open(pdf_file, "wb") as f:
+                        f.write(response.content)
+                    embedded_text, ocr_text = read_pdf(pdf_file)
+                    delete_file(pdf_file)
+                    content[0]['text'] = content[0]['text'] + "\nPDF CONTENTS:\n" + embedded_text + "\nOCR CONTENTS:\n" + ocr_text
 
         new_usr_msg = {
             "role": "user",
@@ -161,7 +174,7 @@ class ChatGPT:
                 top_p = float(settings_dict["top_p"][0]),
                 frequency_penalty = float(settings_dict["frequency_penalty"][0]),
                 presence_penalty = float(settings_dict["presence_penalty"][0]),
-                max_tokens = 4096
+                max_tokens = 4096 # TODO: why is this hardcoded?
             )
         
         # Run the blocking function in a separate thread using run_in_executor
@@ -170,8 +183,9 @@ class ChatGPT:
         with ThreadPoolExecutor() as executor:
             completion = await loop.run_in_executor(executor, blocking_api_call)
         
-        response_msg = completion.choices[0].message.content
-        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {response_msg}")
+        chatgptcompletion = completion.choices[0].message.content
+        response_msg += chatgptcompletion
+        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {chatgptcompletion}")
         return response_msg
 
     ################# Entrance #################
@@ -293,10 +307,10 @@ class ChatGPT:
             return f"Deleted thread {thread_id}.pkl"
 
         # list available models of interest
-        if usr_msg == "list models":
+        if usr_msg == "models":
             tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
             ret_str = f"Available models:\n{tmp}" 
-            if self.DEBUG: print(f"DEBUG: !list models\n {tmp}")
+            if self.DEBUG: print(f"DEBUG: !models\n {tmp}")
             return ret_str
 
         # show the current gpt3 prompt
@@ -383,8 +397,6 @@ class ChatGPT:
             return "save thread"
         if usr_msg[:4] == "load" and usr_msg[5:11] != "thread":
             return "load thread" + usr_msg[3:]
-        if usr_msg == "lm":
-            return "list models"
         if usr_msg == "cm":
             return "current model"
 

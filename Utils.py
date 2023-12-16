@@ -2,6 +2,11 @@ import discord
 import subprocess
 import re
 import os
+# from PyPDF2 import PdfReader
+import fitz # PyMuPDF
+import pytesseract # OCR engine
+from PIL import Image
+import io
 
 # CONSTANTS
 DISCORD_MSGLEN_CAP=2000
@@ -67,3 +72,22 @@ def delete_file(filepath:str)->None:
     '''Delete the file at the given filepath if it exists'''
     if os.path.exists(filepath):
         os.remove(filepath)
+
+def read_pdf(file_path: str)->tuple[str,str]:
+    '''Reads the pdf at the given file path and returns both the embedded text and the OCR'd text seperately'''
+    pdf_doc = fitz.open(file_path)
+
+    all_embedded_text = ""
+    all_ocr_text = ""
+    for i in range(len(pdf_doc)):
+        page = pdf_doc[i]
+        # embedded text
+        embedded_text = page.get_text()
+        all_embedded_text += embedded_text
+        # ocr
+        pix = page.get_pixmap()
+        img = Image.open(io.BytesIO(pix.tobytes()))
+        ocr_text = pytesseract.image_to_string(img)
+        all_ocr_text += ocr_text
+
+    return all_embedded_text, all_ocr_text
