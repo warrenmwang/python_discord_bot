@@ -1,20 +1,32 @@
 import os
 from Utils import send_msg_to_usr
-from ChatGPT import Dalle
+from ChatGPT import Dalle, ChatGPT
 import discord
 import asyncio
-from Utils import send_file_to_usr, find_text_between_markers, delete_file
+from Utils import send_file_to_usr, find_text_between_markers, delete_file, read_pdf
+from VectorDB import VectorDB
+import requests
 
 class CommandInterpreter:
     '''
     Tries to interpret inputs as commands and perform the action requested
     If the action is not found to be a hard-coded command, reply the "command" or gpt response to user.
     '''
-    def __init__(self, help_str : str, debug : bool = False):
+    def __init__(self, help_str : str, gpt_interpreter : ChatGPT, debug : bool = False):
         self.DEBUG = debug
         self.help_str = help_str
+
+        # Dalle
         self.dalle = Dalle(debug)
         self.dalle_output_path = os.getenv("DALLE_OUTPUT_PATH")
+
+        # VectorDB for RAG
+        self.tmp_dir = "./tmp"
+        self.gpt_interpreter = gpt_interpreter
+        chroma_data_path = "chroma_data/"
+        embed_model = "all-MiniLM-L6-v2"
+        collection_name = "main"
+        self.vectorDB = VectorDB(chroma_data_path, embed_model, collection_name)
 
     async def main(self, msg : discord.message.Message, command : str) -> None:
         '''
@@ -61,6 +73,40 @@ class CommandInterpreter:
                 return 
             except Exception as error:
                 return error
+
+        ### Vector DB
+        if command == "upload":
+            if msg.attachments:
+                for attachment in msg.attachments:
+                    # pdfs (grab embedded and ocr text -- use both in context)
+                    if attachment.filename.endswith('.pdf'):
+                        response = requests.get(attachment.url) # download pdf
+                        pdf_file = f"{self.tmp_dir}/tmp.pdf"
+                        with open(pdf_file, "wb") as f:
+                            f.write(response.content)
+                        embedded_text, ocr_text = read_pdf(pdf_file)
+                        delete_file(pdf_file)
+                        document = "\nPDF CONTENTS:\n" + embedded_text + "\nOCR CONTENTS:\n" + ocr_text
+                        self.vectorDB.upload(document)
+                    
+                    # text files
+                    if attachment.filename.endswith('.txt'):
+                        document = requests.get(attachment.url).text
+                        self.vectorDB.upload(document)
+
+            return "Upload complete."
+
+        if command[:5] == "query":
+            # get context from db
+            db_query_prompt = command[6:]
+            db_context = self.vectorDB.query(db_query_prompt)[0]
+
+            # pass to gpt
+            prompt = f"ORIGINAL USER QUERY:{command[6:]}\nVECTOR DB CONTEXT:{db_context}\nRESPONSE:"
+            gpt_response = await self.gpt_interpreter.mainNoAttachments(prompt)
+
+            return gpt_response
+            
 
         #### "HIDDEN COMMANDS"
     

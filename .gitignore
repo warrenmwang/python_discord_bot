@@ -7,3 +7,4 @@ runme.sh
 .dockerignore
 cron_start.sh
 testing/
+chroma_data/

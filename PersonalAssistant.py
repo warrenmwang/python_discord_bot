@@ -21,6 +21,8 @@ class PersonalAssistant:
             "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
             "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
             'draw': "format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3",
+            'upload': '(vector db) upload a text document (.pdf or .txt) to be stored into the Vector DB',
+            'query': '(vector db) query documents in the Vector DB to be used to talk with w/ ChatGPT; format is `[query] [prompt]`',
             '_attachTextFile': "Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. DO NOT PUT EVERYTHING INTO A SINGLE LINE, use newlines, tabs, normal code formatting. format is `_attachTextFile [commentary] [code]` where each section can span multiple lines."
         }
         self.personal_assistant_command_options = self.personal_assistant_commands.keys()
@@ -37,7 +39,7 @@ class PersonalAssistant:
         self.llama_pa_toggle = False
         self.llama_interpreter = LLM('llama', '7B', self.llama_pa_prompt)
 
-        self.command_interpreter = CommandInterpreter(self.help_str)
+        self.command_interpreter = CommandInterpreter(self.help_str, self.gpt_interpreter)
 
     async def main(self, msg : discord.message.Message) -> str:
         '''

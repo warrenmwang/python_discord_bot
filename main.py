@@ -13,7 +13,7 @@ class Main:
         # api keys
         self.TOKEN = os.getenv('DISCORD_TOKEN')
 
-        # gpt
+        # ChatGPT
         self.ChatGPT = ChatGPT(debug)
         self.chatgpt_channel = self.ChatGPT.gpt3_channel_name
 
@@ -24,9 +24,6 @@ class Main:
         # personal assistant
         self.PersonalAssistant = PersonalAssistant(debug)
         self.personal_assistant_channel = self.PersonalAssistant.personal_assistant_channel
-
-        # ignore any messages not in these channels
-        self.allowed_channels = [self.chatgpt_channel, self.personal_assistant_channel, self.stable_diffusion_channel]
 
         # discord
         self.intents = discord.Intents.all()
@@ -51,10 +48,6 @@ class Main:
             # don't respond to yourself
             if msg.author == self.client.user:
                 return 
-
-            # only respond if usr sends a msg in one of the allowed channels
-            if channel not in self.allowed_channels:
-                return
 
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:

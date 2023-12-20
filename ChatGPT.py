@@ -105,9 +105,58 @@ class ChatGPT:
         self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
         self.gpt_context_reset()
     
-    async def gen_gpt_response(self, msg : discord.message.Message, settings_dict: dict = None) -> str:
+    async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict = None) -> str:
         '''
         retrieves a GPT response given a string input and a dictionary containing the settings to use
+        returns the response str
+        '''
+        if settings_dict is None:
+            settings_dict = self.gpt3_settings
+
+        # init content with the user's message
+        content = [
+            {"type": "text",
+             "text": prompt
+            }
+        ]
+
+        new_usr_msg = {
+            "role": "user",
+            "content": content
+        }
+
+        if self.DEBUG: print(f"DEBUG: {new_usr_msg=}")
+
+        ##############################
+        # update list of messages, then use it to query
+        settings_dict["messages"][0].append(new_usr_msg)
+
+        def blocking_api_call():
+            # query
+            return self.client.chat.completions.create(
+                model = settings_dict["model"][0],
+                messages = settings_dict["messages"][0],
+                temperature = float(settings_dict["temperature"][0]),
+                top_p = float(settings_dict["top_p"][0]),
+                frequency_penalty = float(settings_dict["frequency_penalty"][0]),
+                presence_penalty = float(settings_dict["presence_penalty"][0]),
+                max_tokens = 4096 # TODO: why is this hardcoded?
+            )
+        
+        # Run the blocking function in a separate thread using run_in_executor
+        if self.DEBUG: print(f"DEBUG: Sent to ChatGPT API: {settings_dict['messages'][0]}")
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            completion = await loop.run_in_executor(executor, blocking_api_call)
+        
+        chatgptcompletion = completion.choices[0].message.content
+        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {chatgptcompletion}")
+        return chatgptcompletion
+
+    async def genGPTResponseWithAttachments(self, msg : discord.message.Message, settings_dict: dict = None) -> str:
+        '''
+        retrieves a GPT response given a string input and a dictionary containing the settings to use
+        checks for attachments in the discord Message construct
         returns the response str
         '''
         if settings_dict is None:
@@ -189,6 +238,27 @@ class ChatGPT:
         if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {chatgptcompletion}")
         return response_msg
 
+    async def mainNoAttachments(self, prompt : str) -> str:
+        '''
+        Alternative entrance function for only plain text inputs...
+        '''
+        # check to see if we are running out of tokens for current msg log
+        # get the current thread length
+        curr_thread = await self.get_curr_gpt_thread()
+        curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
+        while curr_thread_len_in_tokens > int(self.gpt3_settings["max_tokens"][0]):
+            # remove the 2nd oldest message from the thread (first oldest is the prompt)
+            self.gpt3_settings["messages"][0].pop(1)
+        
+        # use usr_msg to generate new response from API
+        gpt_response = await self.genGPTResponseNoAttachments(prompt)
+
+        # reformat to put into messages list for future context, and save
+        formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
+        self.gpt3_settings["messages"][0].append(formatted_response)
+
+        return gpt_response
+
     ################# Entrance #################
     async def main(self, msg : discord.message.Message) -> str:
         '''
@@ -213,7 +283,7 @@ class ChatGPT:
             self.gpt3_settings["messages"][0].pop(1)
         
         # use usr_msg to generate new response from API
-        gpt_response = await self.gen_gpt_response(msg)
+        gpt_response = await self.genGPTResponseWithAttachments(msg)
 
         # reformat to put into messages list for future context, and save
         formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
