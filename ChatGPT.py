@@ -13,7 +13,7 @@ import io, base64
 class Dalle:
     def __init__(self, debug:bool):
         self.DEBUG = debug
-        # openai.api_key = os.getenv("GPT3_OPENAI_API_KEY")
+        # openai.api_key = os.getenv("gpt_OPENAI_API_KEY")
         self.model = "dall-e-3"
         self.client = OpenAI()
 
@@ -52,14 +52,13 @@ class ChatGPT:
         self.tmp_dir = "./tmp"
 
         self.client = OpenAI()
-        self.gpt3_channel_name = os.getenv('GPT3_CHANNEL_NAME')
-        self.gpt3_channel_id = os.getenv('GPT3_CHANNEL_ID')
-        self.gpt3_model_to_max_tokens = {
+        self.gpt_channel_name = os.getenv('GPT_CHANNEL_NAME')
+        self.gpt_model_to_max_tokens = {
             "gpt-4-1106-preview": [128000, "Apr 2023"], 
             "gpt-4-vision-preview" : [128000, "Apr 2023"], 
             "gpt-4" : [8192, "Sep 2021"]
         }
-        self.gpt3_settings = {
+        self.gpt_settings = {
             "model": ["gpt-4-vision-preview", "str"], 
             "prompt": ["", "str"],
             "messages" : [[], "list of dicts"],
@@ -74,20 +73,20 @@ class ChatGPT:
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
-        self.all_gpt3_available_prompts = None # list of all prompt names
+        self.all_gpt_available_prompts = None # list of all prompt names
         self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
 
         self.commands = {
             "help" : "display this message",
-            "convo len" : 'show current gpt3 context length',
-            "reset thread" : 'reset gpt3 context length',
+            "convo len" : 'show current gpt context length',
+            "reset thread" : 'reset gpt context length',
             "show thread" : 'show the entire current convo context',
-            "gptsettings" : 'show the current gpt3 settings',
-            "gptset": "format is `gptset, [setting_name], [new_value]` modify gpt3 settings",
+            "gptsettings" : 'show the current gpt settings',
+            "gptset": "format is `gptset, [setting_name], [new_value]` modify gpt settings",
             "curr prompt": "get the current prompt name",
             "change prompt": "format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)",
-            "show prompts": "show the available prompts for gpt3",
+            "show prompts": "show the available prompts for gpt",
             "models": "list the available gpt models",
             "modify prompts": "modify the prompts for gpt",
             "save thread": "save the current gptX thread to a file",
@@ -95,13 +94,13 @@ class ChatGPT:
             "load thread": "format is `load thread, [unique id]` load a gptX thread from a file",
             "delete thread": "format is `delete thread, [unique id]` delete a gptX thread from a file",
             "current model": "show the current gpt model",
-            "swap": "swap between gpt3.5 and gpt4 (regular)",
+            "swap": "swap between different models",
         }
         self.commands_help_str = constructHelpMsg(self.commands)
 
         # initialize prompts
         self.gpt_read_prompts_from_file() # read the prompts from disk
-        self.curr_prompt_name = self.all_gpt3_available_prompts[0] # init with first prompt
+        self.curr_prompt_name = self.all_gpt_available_prompts[0] # init with first prompt
         self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
         self.gpt_context_reset()
     
@@ -111,7 +110,7 @@ class ChatGPT:
         returns the response str
         '''
         if settings_dict is None:
-            settings_dict = self.gpt3_settings
+            settings_dict = self.gpt_settings
 
         # init content with the user's message
         content = [
@@ -160,7 +159,7 @@ class ChatGPT:
         returns the response str
         '''
         if settings_dict is None:
-            settings_dict = self.gpt3_settings
+            settings_dict = self.gpt_settings
 
         response_msg = ""
 
@@ -246,16 +245,16 @@ class ChatGPT:
         # get the current thread length
         curr_thread = await self.get_curr_gpt_thread()
         curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
-        while curr_thread_len_in_tokens > int(self.gpt3_settings["max_tokens"][0]):
+        while curr_thread_len_in_tokens > int(self.gpt_settings["max_tokens"][0]):
             # remove the 2nd oldest message from the thread (first oldest is the prompt)
-            self.gpt3_settings["messages"][0].pop(1)
+            self.gpt_settings["messages"][0].pop(1)
         
         # use usr_msg to generate new response from API
         gpt_response = await self.genGPTResponseNoAttachments(prompt)
 
         # reformat to put into messages list for future context, and save
         formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
-        self.gpt3_settings["messages"][0].append(formatted_response)
+        self.gpt_settings["messages"][0].append(formatted_response)
 
         return gpt_response
 
@@ -278,16 +277,16 @@ class ChatGPT:
         # get the current thread length
         curr_thread = await self.get_curr_gpt_thread()
         curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
-        while curr_thread_len_in_tokens > int(self.gpt3_settings["max_tokens"][0]):
+        while curr_thread_len_in_tokens > int(self.gpt_settings["max_tokens"][0]):
             # remove the 2nd oldest message from the thread (first oldest is the prompt)
-            self.gpt3_settings["messages"][0].pop(1)
+            self.gpt_settings["messages"][0].pop(1)
         
         # use usr_msg to generate new response from API
         gpt_response = await self.genGPTResponseWithAttachments(msg)
 
         # reformat to put into messages list for future context, and save
         formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
-        self.gpt3_settings["messages"][0].append(formatted_response)
+        self.gpt_settings["messages"][0].append(formatted_response)
 
         return gpt_response
         
@@ -298,13 +297,13 @@ class ChatGPT:
         set the prompt for the model and update the messages settings dict
         '''
         self.curr_prompt_str = prompt
-        self.gpt3_settings["prompt"][0] = prompt
-        l = self.gpt3_settings["messages"][0]
+        self.gpt_settings["prompt"][0] = prompt
+        l = self.gpt_settings["messages"][0]
         if len(l) == 0:
             l.append([{'role':'assistant', 'content':prompt}])
         else:
             l[0] = {'role':'assistant', 'content':prompt}
-        self.gpt3_settings["messages"][0] = l
+        self.gpt_settings["messages"][0] = l
 
     async def modifyParams(self, msg : discord.message.Message, usr_msg : str) -> str:
         '''
@@ -321,7 +320,7 @@ class ChatGPT:
         if usr_msg == "save thread":
             global time
             # pickle the current thread from gptsettings["messages"][0]
-            msgs_to_save = self.gpt3_settings["messages"][0]
+            msgs_to_save = self.gpt_settings["messages"][0]
             # grab current time in nanoseconds
             curr_time = time.time()
             # pickle the msgs_to_save and name it the current time
@@ -363,7 +362,7 @@ class ChatGPT:
             with open(f"./pickled_threads/{thread_id}.pkl", "rb") as f:
                 msgs_to_load = pickle.load(f)
                 # set the current gptsettings messages to this 
-                self.gpt3_settings["messages"][0] = msgs_to_load
+                self.gpt_settings["messages"][0] = msgs_to_load
             return  f"Loaded thread {thread_id}.pkl"
         
         # delete a saved thread
@@ -379,28 +378,28 @@ class ChatGPT:
 
         # list available models of interest
         if usr_msg == "models":
-            tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt3_model_to_max_tokens.items()])
+            tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt_model_to_max_tokens.items()])
             ret_str = f"Available models:\n{tmp}" 
             if self.DEBUG: print(f"DEBUG: !models\n {tmp}")
             return ret_str
 
-        # show the current gpt3 prompt
+        # show the current gpt prompt
         if usr_msg == "curr prompt":
             return self.curr_prompt_name
 
         # just show current model
         if usr_msg == "current model":
-            return f"Current model: {self.gpt3_settings['model'][0]}"
+            return f"Current model: {self.gpt_settings['model'][0]}"
         
         # toggle which model to use (toggle between the latest gpt4 turbo and the vision model)
         if usr_msg == "swap":
-            curr_model = self.gpt3_settings["model"][0]
+            curr_model = self.gpt_settings["model"][0]
             if self.DEBUG: print(f"DEBUG: swap: {curr_model=}")
             if curr_model == "gpt-4-vision-preview":
                 await self.modifygptset(msg, "gptset model gpt-4-1106-preview")
             else:
                 await self.modifygptset(msg, "gptset model gpt-4-vision-preview")
-            return f'Set to: {self.gpt3_settings["model"][0]}'
+            return f'Set to: {self.gpt_settings["model"][0]}'
 
         # add a command to add a new prompt to the list of prompts and save to file
         if usr_msg == "modify prompts":
@@ -409,7 +408,7 @@ class ChatGPT:
                 self.personal_assistant_modify_prompts_state = "asked what to do" 
                 return f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)"
 
-        # change gpt3 prompt
+        # change gpt prompt
         if usr_msg[:13] == "change prompt":
             # accept only the prompt name, update both str of msgs context and the messages list in gptsettings
             try:
@@ -423,11 +422,11 @@ class ChatGPT:
         if usr_msg == "show prompts":
             return self.get_all_gpt_prompts_as_str()
 
-        # show user current GPT3 settings
+        # show user current gpt settings
         if usr_msg == "gptsettings":
             return self.gptsettings()
 
-        # user wants to modify GPT3 settings
+        # user wants to modify gpt settings
         if usr_msg[0:6] == "gptset":
             await self.modifygptset(msg, usr_msg)
             return self.gptsettings()
@@ -435,7 +434,7 @@ class ChatGPT:
         # show the current thread
         if usr_msg == "show thread":
             ret_str = ""
-            for tmp in self.gpt3_settings["messages"][0]:
+            for tmp in self.gpt_settings["messages"][0]:
                 tmp_role = tmp["role"]
                 tmp_msg = tmp["content"]
                 ret_str += f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n"
@@ -491,7 +490,7 @@ class ChatGPT:
         Returns None if ok, else returns a error msg string.
         '''
         try:
-            self.gptset(usr_msg, self.gpt3_settings)
+            self.gptset(usr_msg, self.gpt_settings)
         except Exception as e:
             return "gptset: gptset [setting_name] [new_value]"
         return None
@@ -505,10 +504,10 @@ class ChatGPT:
 
     def gpt_read_prompts_from_file(self) -> None:
         '''
-        reads all the prompts from the prompt file and stores them in self.all_gpt3_available_prompts and the mapping
+        reads all the prompts from the prompt file and stores them in self.all_gpt_available_prompts and the mapping
         '''
         # reset curr state of prompts
-        self.all_gpt3_available_prompts = [] # prompt names
+        self.all_gpt_available_prompts = [] # prompt names
         self.map_promptname_to_prompt = {} # prompt name -> prompt
 
         # load in all the prompts
@@ -516,32 +515,32 @@ class ChatGPT:
             # load in the pickled object
             self.map_promptname_to_prompt = pickle.load(f)
             # get the list of prompts
-            self.all_gpt3_available_prompts = list(self.map_promptname_to_prompt.keys())
+            self.all_gpt_available_prompts = list(self.map_promptname_to_prompt.keys())
 
     def gpt_context_reset(self) -> None:
         '''
-        resets the gpt3 context
+        resets the gpt context
         > can be used at the start of program run and whenever a reset is wanted
         '''
-        self.gpt3_settings["messages"][0] = [] # reset messages, should be gc'd
-        self.gpt3_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.curr_prompt_str})
+        self.gpt_settings["messages"][0] = [] # reset messages, should be gc'd
+        self.gpt_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.curr_prompt_str})
     
     async def get_curr_gpt_thread(self) -> str:
         '''
         generates the current gpt conversation thread from the gptsettings messages list
         '''
         ret_str = ""
-        for msg in self.gpt3_settings["messages"][0]:
+        for msg in self.gpt_settings["messages"][0]:
             ret_str += f"{msg['role']}: {msg['content']}\n" 
         return ret_str
 
     def gptsettings(self) -> str:
         '''
-        returns the available gpt3 settings, their current values, and their data types
+        returns the available gpt settings, their current values, and their data types
         excludes the possibly large messages list
         '''
-        gpt3_settings = self.gpt3_settings
-        return "".join([f"{key} ({gpt3_settings[key][1]}) = {gpt3_settings[key][0]}\n" for key in gpt3_settings.keys() if key != "messages"])
+        gpt_settings = self.gpt_settings
+        return "".join([f"{key} ({gpt_settings[key][1]}) = {gpt_settings[key][0]}\n" for key in gpt_settings.keys() if key != "messages"])
 
     def gptset(self, usr_msg : str, options : str = None) -> None:
         '''
@@ -549,19 +548,19 @@ class ChatGPT:
 
         GPTSET, [setting_name], [new_value]
 
-        sets the specified gpt3 parameter to the new value
+        sets the specified gpt parameter to the new value
         
         e.g.
         usr_msg = prompt, "bob the builder loves to build"
         '''
         tmp = usr_msg.split()
         setting, new_val = tmp[1], tmp[2]
-        self.gpt3_settings[setting][0] = new_val # always gonna store str
+        self.gpt_settings[setting][0] = new_val # always gonna store str
 
         # if setting a new model, update the max_tokens
         if setting == "model":
-            x = self.gpt3_model_to_max_tokens[new_val] # (max_tokens, date of latest date)
-            self.gpt3_settings["max_tokens"][0] = x[0]
+            x = self.gpt_model_to_max_tokens[new_val] # (max_tokens, date of latest date)
+            self.gpt_settings["max_tokens"][0] = x[0]
 
     def get_all_gpt_prompts_as_str(self):
         '''

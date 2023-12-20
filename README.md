@@ -3,35 +3,37 @@ Honestly I'm just trying to see what it's like to make a discord bot with an ama
 
 ## What does this do?
 - Discord chat interface for ChatGPT API models (e.g. gpt-4-1106-preview, gpt-4-vision-preview, dalle3, etc.) from OpenAI
-  - talk directly with your `.txt` and `.png` files!
-  - example commands (as of 12/13/2023):
+  - talk directly with your text, pdf, and image files with by loading them directly in the current session context or by uploading them (currently only `.pdf` and `.txt` files are supported for vector db) into the VectorDB for long term storage and more extensive searching amongst personal out-of-ChatGPT training data.
+  - example commands
   ```
   PA Commands:
   help             - show this message
   pa_llama         - toggle the use of a llama model to interpret an unknown command (huge WIP)
   remind me        - format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time
   draw             - format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3
+  upload           - (vector db) upload a text document (.pdf or .txt) to be stored into the Vector DB
+  query            - (vector db) query documents in the Vector DB to be used to talk with w/ ChatGPT; format is `[query] [prompt]`
   _attachTextFile  - Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. DO NOT PUT EVERYTHING INTO A SINGLE LINE, use newlines, tabs, normal code formatting. format is `_attachTextFile [commentary] [code]` where each section can span multiple lines.
 
   GPT Commands:
   help              - display this message
-  convo len         - show current gpt3 context length
-  reset thread      - reset gpt3 context length
+  convo len         - show current gpt context length
+  reset thread      - reset gpt context length
   show thread       - show the entire current convo context
-  gptsettings       - show the current gpt3 settings
-  gptset            - format is `gptset, [setting_name], [new_value]` modify gpt3 settings
+  gptsettings       - show the current gpt settings
+  gptset            - format is gptset, [setting_name], [new_value] modify gpt settings
   curr prompt       - get the current prompt name
-  change prompt     - format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)
-  show prompts      - show the available prompts for gpt3
-  list models       - list the available gpt models
+  change prompt     - format is change prompt, [new prompt], change prompt to the specified prompt(NOTE: resets entire message thread)
+  show prompts      - show the available prompts for gpt
+  models            - list the available gpt models
   modify prompts    - modify the prompts for gpt
   save thread       - save the current gptX thread to a file
   show old threads  - show the old threads that have been saved
-  load thread       - format is `load thread, [unique id]` load a gptX thread from a file
-  delete thread     - format is `delete thread, [unique id]` delete a gptX thread from a file
+  load thread       - format is load thread, [unique id] load a gptX thread from a file
+  delete thread     - format is delete thread, [unique id]` delete a gptX thread from a file
   current model     - show the current gpt model
-  swap              - swap between gpt3.5 and gpt4 (regular)
-  ```
+  swap              - swap between different models
+```
 - Convenience access to a local stable diffusion server (use automatic1111 with `--api` flag)
 
 ## Quick setup (using pip/conda)
@@ -53,4 +55,4 @@ Honestly I'm just trying to see what it's like to make a discord bot with an ama
   - > haven't fixed the submodules dependency, so don't plan on stable diffusion working rn
 
 ## Future Plans
-- vector database for custom user data that didn't exist in original llm training set to query about
+- add more commands for vector db

@@ -8,8 +8,9 @@ from Utils import run_bash, send_msg_to_usr, send_file_to_usr, constructHelpMsg
 class StableDiffusion:
     def __init__(self, debug:bool):
         self.DEBUG = debug
+        self.tmp_dir = "./tmp"
         self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
-        self.stable_diffusion_output_dir = os.getenv('STABLE_DIFFUSION_OUTPUT_DIR')
+        self.stable_diffusion_output_dir = f"{self.tmp_dir}/stable_diffusion_output.png"
         self.stable_diffusion_toggle = False
         self.cmd_prefix = "!"
         self.help_dict = {

@@ -15,13 +15,13 @@ class CommandInterpreter:
     def __init__(self, help_str : str, gpt_interpreter : ChatGPT, debug : bool = False):
         self.DEBUG = debug
         self.help_str = help_str
+        self.tmp_dir = "./tmp"
 
         # Dalle
         self.dalle = Dalle(debug)
-        self.dalle_output_path = os.getenv("DALLE_OUTPUT_PATH")
+        self.dalle_output_path = f"{self.tmp_dir}/dalle_output.png"
 
         # VectorDB for RAG
-        self.tmp_dir = "./tmp"
         self.gpt_interpreter = gpt_interpreter
         chroma_data_path = "chroma_data/"
         embed_model = "all-MiniLM-L6-v2"

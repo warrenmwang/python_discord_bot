@@ -15,7 +15,7 @@ class Main:
 
         # ChatGPT
         self.ChatGPT = ChatGPT(debug)
-        self.chatgpt_channel = self.ChatGPT.gpt3_channel_name
+        self.chatgpt_channel = self.ChatGPT.gpt_channel_name
 
         # stable diffusion
         self.StableDiffusion = StableDiffusion(debug)
