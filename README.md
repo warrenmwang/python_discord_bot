@@ -33,7 +33,7 @@ Honestly I'm just trying to see what it's like to make a discord bot with an ama
   delete thread     - format is delete thread, [unique id]` delete a gptX thread from a file
   current model     - show the current gpt model
   swap              - swap between different models
-```
+  ```
 - Convenience access to a local stable diffusion server (use automatic1111 with `--api` flag)
 
 ## Quick setup (using pip/conda)
