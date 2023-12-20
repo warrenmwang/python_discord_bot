@@ -59,7 +59,11 @@ class PersonalAssistant:
 
         # list all the commands available
         if usr_msg == f"{self.cmd_prefix}help":
-            return f"PA Commands:\n{self.help_str}\nGPT Commands:\n{await self.gpt_interpreter.main(msg)}"
+            pa_cmds = f"PA Commands:\n{self.help_str}"
+            gpt_cmds = f"GPT Commands:\n{await self.gpt_interpreter.main(msg)}"
+            await send_msg_to_usr(msg, pa_cmds)
+            await send_msg_to_usr(msg, gpt_cmds)
+            return None
 
         # hard coded commands
         if usr_msg[0] == self.cmd_prefix:
