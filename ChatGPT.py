@@ -123,10 +123,11 @@ class ChatGPT:
         ]
 
         # attachments 
+        text_file_formats = ['.txt', '.c', '.cpp', '.py', '.java', '.js', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md']
+        image_file_formats = ['.jpg', '.png', '.heic']
         if msg.attachments:
             for attachment in msg.attachments:
                 # text files (plain text and code)
-                text_file_formats = ['.txt', '.c', '.cpp', '.py', '.java', '.js', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md']
                 for file_format in text_file_formats:
                     if attachment.filename.endswith(file_format):
                         # Download the attachment
@@ -134,17 +135,17 @@ class ChatGPT:
                         # append to text data to be sent
                         content[0]['text'] = content[0]['text'] + "\nFILE CONTENTS:\n" + file_content
 
-                # images (png's)
-                if attachment.filename.endswith('.png'):
-                    if settings_dict["model"][0] == "gpt-4-vision-preview":
-                        image_dict = {"type": "image_url"}
-                        image_dict["image_url"] = attachment.url
-                        content.append(image_dict)
-                    else:
-                        response_msg += f"Discarded image (current model is not an image model): {attachment.filename}\n"
+                # images (allow .jpg, .png, .heic)
+                for image_format in image_file_formats:
+                    if attachment.filename.endswith(image_format):
+                        if settings_dict["model"][0] == "gpt-4-vision-preview":
+                            image_dict = {"type": "image_url"}
+                            image_dict["image_url"] = attachment.url
+                            content.append(image_dict)
+                        else:
+                            response_msg += f"Discarded image (current model is not an image model): {attachment.filename}\n"
                 
-                # pdfs (scrape text from them, just discard images in pdf...)
-                # TODO: OCR pdfs that don't have easily scrapeable text?
+                # pdfs (grab embedded and ocr text -- use both in context)
                 if attachment.filename.endswith('.pdf'):
                     response = requests.get(attachment.url) # download pdf
                     pdf_file = f"{self.tmp_dir}/tmp.pdf"
