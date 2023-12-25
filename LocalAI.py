@@ -252,15 +252,21 @@ class StableDiffusion:
 
     def _swap_models(self, model_name : str) -> None:
         '''swaps model helper function (requires model to be loaded) -- without async'''
+
+        # unload current model
+        response = requests.post(url=f"{self.server_url}/sdapi/v1/unload-checkpoint")
+
+        # change model checkpoint to use
         # json payload to tell server to update model being used
         option_payload = {
             "sd_model_checkpoint": self.models[model_name] 
         }
         if self.DEBUG: debug_log(f'{option_payload=}')
-
-        # ping server
         response = requests.post(url=f'{self.server_url}/sdapi/v1/options', json=option_payload)
         if self.DEBUG: debug_log(f'{response=}')
+
+        # reload current model
+        response = requests.post(url=f"{self.server_url}/sdapi/v1/reload-checkpoint")
 
         # update curr model tracker
         self.curr_model_name = model_name
