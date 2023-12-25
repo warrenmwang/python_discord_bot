@@ -26,6 +26,7 @@ class StableDiffusion:
             'wd15-mofu': 'wd-mofu-fp16.safetensors',
             'wd15-radiance': 'wd-radiance-fp16.safetensors'
         }
+        self.vaes = ['vae-ft-mse-840000-ema-pruned.ckp', 'kl-f8-anime2.ckpt'] # TODO: add option to switch to more vae's
         self.models_str = constructHelpMsg(self.models)
         self.available_model_names = list(self.models.keys()) 
         self.curr_model_name = '15'
@@ -38,10 +39,10 @@ class StableDiffusion:
                 "status": "show status of server",
                 "model": "show current model loaded/to be loaded",
                 "swap [model_name]": "swaps currently loaded model (server needs to be on)",
-                "models": "list available model checkpoints",
+                "models": "list available model checkpoints", # TODO: add cmd to list vaes
         }
         self.help_str = constructHelpMsg(self.help_dict)
-        self.prompting_help = '[prompt] -s [steps] -n [num] -h [height] -w [width] -c [cfg] -S [seed] -u [upscale value]\nPrompt example: `photograph of a red, crispy apple, 4k, hyperdetailed -s 20 -n 4 -h 512 -w 512`'
+        self.prompting_help = 'usage: `[prompt] -s [steps] -n [num] -h [height] -w [width] -c [cfg] -S [seed] -u [upscale value]`\nPrompt example: `photograph of a red, crispy apple, 4k, hyperdetailed -s 20 -n 4 -h 512 -w 512`'
 
         # parsing user input
         parser = argparse.ArgumentParser('Argument parser for user input for prompt and parameters.', add_help=False)
@@ -70,6 +71,9 @@ class StableDiffusion:
                             help="Resolution upscale value (e.g. 1.5 or 2) -- an input value will enable the upscaler",
                             required=False,
                             default=None)
+
+        # TODO: add negatie prompt optional arg
+
         self.parser = parser
 
         # stop any existing servers at start
@@ -98,7 +102,7 @@ class StableDiffusion:
                 await send_msg_to_usr(msg, 'Already on.')
 
             elif usr_msg == 'on' and self.stable_diffusion_toggle == False:
-                await send_msg_to_usr(msg, 'Turning on SD (waiting like 10 seconds for it to load)...')
+                await send_msg_to_usr(msg, 'Turning on SD (waiting for response)...')
                 self.start_server() 
                 await send_msg_to_usr(msg, "SD server on.")
             
@@ -247,26 +251,23 @@ class StableDiffusion:
         if self.DEBUG: debug_log("Stopped sd current server.")
         self.stable_diffusion_toggle = False
     
-    # TODO: i have no idea if this options endpoint actually does what i think it does bruh
-    # there's no clear documentation -- this the best they got? -- https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API.
-
     def _swap_models(self, model_name : str) -> None:
-        '''swaps model helper function (requires model to be loaded) -- without async'''
-
+        '''swaps model helper function (requires model to be loaded) (core functionality) -- without async'''
         # unload current model
         response = requests.post(url=f"{self.server_url}/sdapi/v1/unload-checkpoint")
+        if self.DEBUG: debug_log(f'unload checkpoint - {response=}')
 
         # change model checkpoint to use
-        # json payload to tell server to update model being used
         option_payload = {
-            "sd_model_checkpoint": self.models[model_name] 
+            "sd_model_checkpoint": self.models[model_name],
+            "sd_vae": self.vaes[1] if "wd15" in model_name else self.vaes[0] # swap vae for waifu diffusion models.
         }
-        if self.DEBUG: debug_log(f'{option_payload=}')
         response = requests.post(url=f'{self.server_url}/sdapi/v1/options', json=option_payload)
-        if self.DEBUG: debug_log(f'{response=}')
+        if self.DEBUG: debug_log(f'options checkpoint - {response=}')
 
         # reload current model
         response = requests.post(url=f"{self.server_url}/sdapi/v1/reload-checkpoint")
+        if self.DEBUG: debug_log(f'reload checkpoint - {response=}')
 
         # update curr model tracker
         self.curr_model_name = model_name
