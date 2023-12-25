@@ -4,6 +4,7 @@ import requests
 from PIL import Image
 import io, base64
 from Utils import run_bash, send_msg_to_usr, send_file_to_usr, constructHelpMsg
+import argparse
 
 class StableDiffusion:
     def __init__(self, debug:bool):
@@ -20,6 +21,35 @@ class StableDiffusion:
                 "status": "display if model is loaded or not"
         }
         self.help_str = constructHelpMsg(self.help_dict)
+
+        # parsing user input
+        parser = argparse.ArgumentParser('Argument parser for user input for prompt and parameters.', add_help=False)
+        parser.add_argument('prompt', help='Image generation prompt', nargs='*') # prompt must be first!
+        parser.add_argument('-s', '--step', type=int, 
+                            help='Number of steps to iterate (each step computes the delta from current pixels to pixels "closer" to prompt)', 
+                            required=False,
+                            default=20)
+        parser.add_argument('-n', '--num', type=int, help='Number of images to create', 
+                            required=False,
+                            default=1)
+        parser.add_argument('-h', '--height', type=int, help='Height in pixels', 
+                            required=False,
+                            default=768)
+        parser.add_argument('-w', '--width', type=int, help='Width in pixels', 
+                            required=False,
+                            default=768)
+        parser.add_argument('-c', '--cfg', type=float, help='CFG scale (higher means follow prompt more)', 
+                            required=False,
+                            default=8.5)
+        parser.add_argument('-S', '--seed', type=int,
+                            help="Seed (controls randomness)",
+                            required=False,
+                            default=-1)
+        parser.add_argument('-u', '--upscale', type=float,
+                            help="Resolution upscale value (e.g. 1.5 or 2) -- an input value will enable the upscaler",
+                            required=False,
+                            default=None)
+        self.parser = parser
 
     async def main(self, msg : discord.message.Message) -> None:
         '''
@@ -44,7 +74,8 @@ class StableDiffusion:
                 await send_msg_to_usr(msg, 'Turning on SD (wait like 5 seconds for it to load)...')
                 self.stable_diffusion_toggle = True
             elif usr_msg == 'help':
-                await send_msg_to_usr(msg, self.help_str)
+                help_str = f"Commands:\n{self.help_str}\nPrompt example: `photograph of a red, crispy apple, 4k, hyperdetailed -s 20 -n 4 -h 512 -w 512`"
+                await send_msg_to_usr(msg, help_str)
             else:
                 await send_msg_to_usr(msg, 'use !help for help')
             return
@@ -60,15 +91,32 @@ class StableDiffusion:
         '''
         ping the localhost stablediffusion api 
         '''
+        # argparse the input string for options like step size, number of imgs, etc.
+        args = self.parser.parse_args(usr_msg.split())
+        prompt = ' '.join(args.prompt)
+        step = args.step
+        num = args.num
+        height = args.height
+        width = args.width
+        cfg = args.cfg
+        seed = args.seed
+        upscale = args.upscale
+        if upscale is None:
+            enable_upscale = False
+            upscale = 2 # NOTE: unused - input still needs to be a num
+        else:
+            enable_upscale = True
+            upscale = 2 # NOTE: unused - input still needs to be a num
+
         # these can be adjustable, tho need to figure out what they mean
         payload = {
-                    "prompt": usr_msg,
-                    # "enable_hr": False,
-                    # "denoising_strength": 0,
-                    # "firstphase_width": 0,
-                    # "firstphase_height": 0,
-                    # "hr_scale": 2,
-                    # "hr_upscaler": "string",
+                    "prompt": prompt,
+                    "enable_hr": enable_upscale,
+                    "denoising_strength": 0,
+                    "firstphase_width": 0,
+                    "firstphase_height": 0,
+                    "hr_scale": upscale,
+                    "hr_upscaler": "Lanczos",
                     # "hr_second_pass_steps": 0,
                     # "hr_resize_x": 0,
                     # "hr_resize_y": 0,
@@ -79,18 +127,18 @@ class StableDiffusion:
                     # "styles": [
                     #     "string"
                     # ],
-                    # "seed": -1,
+                    "seed": seed,
                     # "subseed": -1,
                     # "subseed_strength": 0,
                     # "seed_resize_from_h": -1,
                     # "seed_resize_from_w": -1,
                     # "sampler_name": "Euler",
                     # "batch_size": 1,
-                    "n_iter": 1,
-                    "steps": 25,
-                    "cfg_scale": 8.5,
-                    "width": 768,
-                    "height": 768,
+                    "n_iter": num,
+                    "steps": step,
+                    "cfg_scale": cfg,
+                    "width": width,
+                    "height": height,
                     # "restore_faces": False,
                     # "tiling": False,
                     # "do_not_save_samples": False,
@@ -112,16 +160,26 @@ class StableDiffusion:
                     # "alwayson_scripts": {}
                 }
 
-        await send_msg_to_usr(msg, f"Creating image of \"{usr_msg}\"")
+        if self.DEBUG:
+            print(f'{prompt=}')
+            print(f'{step=}')
+            print(f'{num=}')
+            print(f'{height=}')
+            print(f'{width=}')
+            print(f'{cfg=}')
+            print(f'{seed=}')
+            print(f'{upscale=}')
 
-        response = requests.post(url=f'http://127.0.0.1:7860/sdapi/v1/txt2img', json=payload)
+            print(f"{payload=}")
+
+        await send_msg_to_usr(msg, f"Creating image with input: `{usr_msg}`")
+
+        response = requests.post(url=f'http://127.0.0.1:7861/sdapi/v1/txt2img', json=payload)
         r = response.json()
-        # DEBUG
-        # print(r.keys())
-        # for k in r.keys():
-        #     print(f'{r[k]=}')
 
-        # TODO: use PIL to manually make a grid of the 4 images into a single image to be return to the user.
+        if self.DEBUG:
+            print(f'{r=}')
+
         for i in r['images']:
             image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
             image.save(self.stable_diffusion_output_dir)
@@ -131,7 +189,7 @@ class StableDiffusion:
         '''
         load the model onto the gpu with the REST API params
         '''
-        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --api" C-m'
+        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --api --nowebui" C-m'
         run_bash(cmd)
 
     async def sd_unload_model(self):
