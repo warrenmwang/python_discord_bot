@@ -6,7 +6,7 @@ from LocalAI import StableDiffusion
 from ChatGPT import ChatGPT
 from PersonalAssistant import PersonalAssistant
 import argparse
-from Utils import send_msg_to_usr
+from Utils import send_msg_to_usr, debug_log
 
 class Main:
     def __init__(self, debug : bool):
@@ -71,6 +71,6 @@ if __name__ == "__main__":
     debug = args.debug
 
     # run
-    if debug: print(f"DEBUG: debug printing enabled")
+    if debug: debug_log(f"debug printing enabled")
     bot = Main(debug)
     bot.run()

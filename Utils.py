@@ -2,7 +2,6 @@ import discord
 import subprocess
 import re
 import os
-# from PyPDF2 import PdfReader
 import fitz # PyMuPDF
 import pytesseract # OCR engine
 from PIL import Image

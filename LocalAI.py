@@ -209,25 +209,14 @@ class StableDiffusion:
                     # "alwayson_scripts": {}
                 }
 
-        if self.DEBUG:
-            print(f'{prompt=}')
-            print(f'{step=}')
-            print(f'{num=}')
-            print(f'{height=}')
-            print(f'{width=}')
-            print(f'{cfg=}')
-            print(f'{seed=}')
-            print(f'{upscale=}')
-
-            print(f"{payload=}")
+        if self.DEBUG: debug_log(f'{prompt=}\n{step=}\n{num=}\n{height=}\n{width=}\n{cfg=}\n{seed=}\n{upscale=}\n{payload=}')
 
         await send_msg_to_usr(msg, f"Creating image with input: `{usr_msg}`")
 
         response = requests.post(url=f'{self.server_url}/sdapi/v1/txt2img', json=payload)
         r = response.json()
 
-        if self.DEBUG:
-            print(f'{r=}')
+        if self.DEBUG: debug_log(f'{r=}')
 
         for i in r['images']:
             image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
@@ -238,16 +227,16 @@ class StableDiffusion:
         '''
         load the model onto the gpu with the REST API params
         '''
-        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --api --nowebui" C-m'
+        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --nowebui" C-m'
         run_bash(cmd)
-        debug_log("Starting sd server...")
+        if self.DEBUG: debug_log("Starting sd server...")
         time.sleep(10) # LOL...
-        debug_log("Server started.")
+        if self.DEBUG: debug_log("Server started.")
         self.stable_diffusion_toggle = True
 
-        debug_log("Loading default model...")
+        if self.DEBUG: debug_log("Loading default model...")
         self._swap_models(self.curr_model_name)
-        debug_log("Loaded default model.")
+        if self.DEBUG: debug_log("Loaded default model.")
 
     def stop_server(self):
         '''
@@ -255,8 +244,11 @@ class StableDiffusion:
         '''
         cmd = 'tmux kill-session -t sd_api'
         run_bash(cmd)
-        if self.DEBUG: print("Stopped sd current server.")
+        if self.DEBUG: debug_log("Stopped sd current server.")
         self.stable_diffusion_toggle = False
+    
+    # TODO: i have no idea if this options endpoint actually does what i think it does bruh
+    # there's no clear documentation -- this the best they got? -- https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API.
 
     def _swap_models(self, model_name : str) -> None:
         '''swaps model helper function (requires model to be loaded) -- without async'''
@@ -264,11 +256,11 @@ class StableDiffusion:
         option_payload = {
             "sd_model_checkpoint": self.models[model_name] 
         }
-        if self.DEBUG: print(f'{option_payload=}')
+        if self.DEBUG: debug_log(f'{option_payload=}')
 
         # ping server
         response = requests.post(url=f'{self.server_url}/sdapi/v1/options', json=option_payload)
-        if self.DEBUG: print(f'{response=}')
+        if self.DEBUG: debug_log(f'{response=}')
 
         # update curr model tracker
         self.curr_model_name = model_name

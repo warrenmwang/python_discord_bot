@@ -34,7 +34,8 @@ Honestly I'm just trying to see what it's like to make a discord bot with an ama
   current model     - show the current gpt model
   swap              - swap between different models
   ```
-- Convenience access to a local stable diffusion server (use automatic1111 with `--api` flag)
+- Convenience access to a local stable diffusion server (uses automatic1111 as core -- I'm not digging into their code bruh, it's just a clone of their repo running in a separate tmux session 💀 -- communicate via HTTP requests on localhost.)
+ - I realize there are plenty of other dedicated, better discord bot frontends that exist that also use automatic1111 as api server...so you choose bro
 
 ## Quick setup (using pip/conda)
 1. Prerequisites:
@@ -56,3 +57,4 @@ Honestly I'm just trying to see what it's like to make a discord bot with an ama
 
 ## Future Plans
 - add more commands for vector db
+- make stable diffusion bot better (hah)

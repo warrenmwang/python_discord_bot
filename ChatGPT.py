@@ -5,7 +5,7 @@ import pickle
 import asyncio
 import requests
 from concurrent.futures import ThreadPoolExecutor
-from Utils import constructHelpMsg, read_pdf, delete_file
+from Utils import constructHelpMsg, read_pdf, delete_file, debug_log
 import time
 from PIL import Image
 import io, base64
@@ -124,7 +124,7 @@ class ChatGPT:
             "content": content
         }
 
-        if self.DEBUG: print(f"DEBUG: {new_usr_msg=}")
+        if self.DEBUG: debug_log(f"{new_usr_msg=}")
 
         ##############################
         # update list of messages, then use it to query
@@ -143,13 +143,13 @@ class ChatGPT:
             )
         
         # Run the blocking function in a separate thread using run_in_executor
-        if self.DEBUG: print(f"DEBUG: Sent to ChatGPT API: {settings_dict['messages'][0]}")
+        if self.DEBUG: debug_log(f"Sent to ChatGPT API: {settings_dict['messages'][0]}")
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
             completion = await loop.run_in_executor(executor, blocking_api_call)
         
         chatgptcompletion = completion.choices[0].message.content
-        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {chatgptcompletion}")
+        if self.DEBUG: debug_log(f"Got response from ChatGPT API: {chatgptcompletion}")
         return chatgptcompletion
 
     async def genGPTResponseWithAttachments(self, msg : discord.message.Message, settings_dict: dict = None) -> str:
@@ -208,7 +208,7 @@ class ChatGPT:
             "content": content
         }
 
-        if self.DEBUG: print(f"DEBUG: {new_usr_msg=}")
+        if self.DEBUG: debug_log(f"{new_usr_msg=}")
 
         ##############################
         # update list of messages, then use it to query
@@ -227,14 +227,14 @@ class ChatGPT:
             )
         
         # Run the blocking function in a separate thread using run_in_executor
-        if self.DEBUG: print(f"DEBUG: Sent to ChatGPT API: {settings_dict['messages'][0]}")
+        if self.DEBUG: debug_log(f"Sent to ChatGPT API: {settings_dict['messages'][0]}")
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
             completion = await loop.run_in_executor(executor, blocking_api_call)
         
         chatgptcompletion = completion.choices[0].message.content
         response_msg += chatgptcompletion
-        if self.DEBUG: print(f"DEBUG: Got response from ChatGPT API: {chatgptcompletion}")
+        if self.DEBUG: debug_log(f"Got response from ChatGPT API: {chatgptcompletion}")
         return response_msg
 
     async def mainNoAttachments(self, prompt : str) -> str:
@@ -380,7 +380,7 @@ class ChatGPT:
         if usr_msg == "models":
             tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt_model_to_max_tokens.items()])
             ret_str = f"Available models:\n{tmp}" 
-            if self.DEBUG: print(f"DEBUG: !models\n {tmp}")
+            if self.DEBUG: debug_log(f"!models\n {tmp}")
             return ret_str
 
         # show the current gpt prompt
@@ -394,7 +394,7 @@ class ChatGPT:
         # toggle which model to use (toggle between the latest gpt4 turbo and the vision model)
         if usr_msg == "swap":
             curr_model = self.gpt_settings["model"][0]
-            if self.DEBUG: print(f"DEBUG: swap: {curr_model=}")
+            if self.DEBUG: debug_log(f"swap: {curr_model=}")
             if curr_model == "gpt-4-vision-preview":
                 await self.modifygptset(msg, "gptset model gpt-4-1106-preview")
             else:

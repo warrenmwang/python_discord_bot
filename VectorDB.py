@@ -1,6 +1,7 @@
 import chromadb
 from chromadb.utils import embedding_functions
 import uuid
+from Utils import debug_log
 
 class VectorDB:
     def __init__(self, data_path:str, embed_model:str, collection_name:str, debug:bool=False):
@@ -39,7 +40,7 @@ class VectorDB:
             query_texts=[prompt],
             n_results=k 
         )
-        if self.DEBUG: print(response)
+        if self.DEBUG: debug_log(response)
         return response['documents'][0]
 
     def size(self) -> int:
