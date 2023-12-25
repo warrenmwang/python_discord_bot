@@ -7,9 +7,27 @@ import fitz # PyMuPDF
 import pytesseract # OCR engine
 from PIL import Image
 import io
+import datetime
 
 # CONSTANTS
 DISCORD_MSGLEN_CAP=2000
+
+def debug_log(s: str)->None:
+    '''print string s in debug logging format'''
+    # Get the current terminal width
+    terminal_width = os.get_terminal_size().columns
+    
+    # Prepare the debug message
+    debug_message = f"DEBUG: {s}"
+    
+    # Get the current timestamp
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Calculate the number of spaces needed to align the timestamp to the right
+    spaces_needed = terminal_width - len(debug_message) - len(timestamp) - 1
+    
+    # Print the debug message with the timestamp aligned to the right
+    print(f"{debug_message}{' ' * spaces_needed}{timestamp}")
 
 def run_bash(command : str) -> tuple[str,str]:
     try:
@@ -48,15 +66,15 @@ def constructHelpMsg(d : dict)->str:
     n = len(d.items())
     strings = [None for i in range(n)]
     for i, (k,v) in enumerate(d.items()):
-        strings[i] = f'{k} - {v}'
+        strings[i] = f'{k} -- {v}'
     
     # Find the maximum length of the first part (before the dash)
-    max_length = max(len(s.split('-')[0]) for s in strings)
+    max_length = max(len(s.split('--')[0]) for s in strings)
 
     # Format and print the strings
     for s in strings:
-        parts = s.split('-')
-        formatted_string = "{:<{}} - {}".format(parts[0], max_length, parts[1].strip())
+        parts = s.split('--')
+        formatted_string = "{:<{}} -- {}".format(parts[0], max_length, parts[1].strip())
         help_str += f'{formatted_string}\n'
     help_str += '```'
 
