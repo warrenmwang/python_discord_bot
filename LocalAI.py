@@ -13,6 +13,7 @@ class StableDiffusion:
         self.tmp_dir = "./tmp"
 
         self.server_url = "http://127.0.0.1:7861"
+        self.tmux_session_name = "sd_api"
         self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
         self.stable_diffusion_output_dir = f"{self.tmp_dir}/stable_diffusion_output.png"
         self.stable_diffusion_toggle = False
@@ -39,40 +40,74 @@ class StableDiffusion:
                 "status": "show status of server",
                 "model": "show current model loaded/to be loaded",
                 "swap [model_name]": "swaps currently loaded model (server needs to be on)",
-                "models": "list available model checkpoints", # TODO: add cmd to list vaes
+                "models": "list available model checkpoints", 
+                "vaes": "list available VAEs"
         }
         self.help_str = constructHelpMsg(self.help_dict)
-        self.prompting_help = 'usage: `[prompt] -s [steps] -n [num] -h [height] -w [width] -c [cfg] -S [seed] -u [upscale value]`\nPrompt example: `photograph of a red, crispy apple, 4k, hyperdetailed -s 20 -n 4 -h 512 -w 512`'
+        self.prompting_help = 'usage: `[prompt] -np [negative prompt] -s [steps] -sm [sampler] -n [num] -h [height] -w [width] -c [cfg] -S [seed] -u [upscale value] -ur [upscaler name] -ds [denoising_strength]`\nPrompt example: `photograph of a red, crispy apple, 4k, hyperdetailed -s 20 -n 4 -h 512 -w 512`'
 
         # parsing user input
         parser = argparse.ArgumentParser('Argument parser for user input for prompt and parameters.', add_help=False)
-        parser.add_argument('prompt', help='Image generation prompt', nargs='*') # prompt must be first!
-        parser.add_argument('-s', '--step', type=int, 
+        parser.add_argument('prompt', 
+                            help='Image generation prompt', 
+                            nargs='*') # prompt must be first!
+        parser.add_argument('-s', '--step', 
+                            type=int, 
                             help='Number of steps to iterate (each step computes the delta from current pixels to pixels "closer" to prompt)', 
                             required=False,
                             default=20)
-        parser.add_argument('-n', '--num', type=int, help='Number of images to create', 
+        parser.add_argument('-n', '--num', 
+                            type=int, 
+                            help='Number of images to create', 
                             required=False,
                             default=1)
-        parser.add_argument('-h', '--height', type=int, help='Height in pixels', 
+        parser.add_argument('-h', '--height', 
+                            type=int, 
+                            help='Height in pixels', 
                             required=False,
                             default=768)
-        parser.add_argument('-w', '--width', type=int, help='Width in pixels', 
+        parser.add_argument('-w', '--width', 
+                            type=int, 
+                            help='Width in pixels', 
                             required=False,
                             default=768)
-        parser.add_argument('-c', '--cfg', type=float, help='CFG scale (higher means follow prompt more)', 
+        parser.add_argument('-c', '--cfg', 
+                            type=float, 
+                            help='CFG scale (higher means follow prompt more)', 
                             required=False,
                             default=8.5)
-        parser.add_argument('-S', '--seed', type=int,
+        parser.add_argument('-S', '--seed', 
+                            type=int,
                             help="Seed (controls randomness)",
                             required=False,
                             default=-1)
-        parser.add_argument('-u', '--upscale', type=float,
+        parser.add_argument('-u', '--upscale', 
+                            type=float,
                             help="Resolution upscale value (e.g. 1.5 or 2) -- an input value will enable the upscaler",
                             required=False,
                             default=None)
-
-        # TODO: add negatie prompt optional arg
+        parser.add_argument('-ur', '--upscaler', 
+                            type=str,
+                            help='Upscaler name (e.g. Lanczos, Nearest, etc.)',
+                            required=False,
+                            default='ESRGAN_4x')
+        parser.add_argument('-ds', '--denoising_strength',
+                            type=float,
+                            help='Denoising strength for upscaling',
+                            required=False,
+                            default=0.67)
+        parser.add_argument('-np', '--negative_prompt', 
+                            nargs='*', 
+                            type=str,
+                            help='Negative image generation prompt to avoid certain themes or elements', 
+                            required=False,
+                            default=None)
+        parser.add_argument('-sm', '--sampler',
+                            nargs='*',
+                            type=str,
+                            help="Sampler",
+                            required=False,
+                            default='Euler')
 
         self.parser = parser
 
@@ -119,6 +154,9 @@ class StableDiffusion:
             
             elif usr_msg == 'models':
                 await send_msg_to_usr(msg, self.models_str)
+            
+            elif usr_msg == 'vaes':
+                await send_msg_to_usr(msg, str(self.vaes))
 
             elif usr_msg == 'help':
                 help_str = f"Commands:\n{self.help_str}\nPrompting Help:\n{self.prompting_help}"
@@ -148,26 +186,28 @@ class StableDiffusion:
             return
 
         prompt = ' '.join(args.prompt)
+        negative_prompt = ' '.join(args.negative_prompt) if args.negative_prompt is not None else ''
+
         step = args.step
         num = args.num
         height = args.height
         width = args.width
         cfg = args.cfg
         seed = args.seed
+        sampler = ' '.join(args.sampler) if args.sampler != 'Euler' else args.sampler
+        denoising_strength = args.denoising_strength
+
         upscale = args.upscale
-        if upscale is None:
-            enable_upscale = False
-        else:
-            enable_upscale = True
-        upscaler = "ESRGAN_4x" # possible (don't actually know if i have all of these) - Lanczos, Nearest, LDSR, ESRGAN_4x, ScuNET GAN, ScuNET PSNR, SwinIR 4x
+        upscaler = args.upscaler
+        enable_upscale = False if upscale is None else True
 
         # these can be adjustable, tho need to figure out what they mean
         payload = {
                     "prompt": prompt,
                     "enable_hr": enable_upscale,
-                    "denoising_strength": 0,
-                    "firstphase_width": 0,
-                    "firstphase_height": 0,
+                    "denoising_strength": denoising_strength,
+                    # "firstphase_width": 0,
+                    # "firstphase_height": 0,
                     "hr_scale": upscale,
                     "hr_upscaler": upscaler,
                     # "hr_second_pass_steps": 0,
@@ -185,7 +225,7 @@ class StableDiffusion:
                     # "subseed_strength": 0,
                     # "seed_resize_from_h": -1,
                     # "seed_resize_from_w": -1,
-                    # "sampler_name": "Euler",
+                    "sampler_name": sampler,
                     # "batch_size": 1,
                     "n_iter": num,
                     "steps": step,
@@ -196,7 +236,7 @@ class StableDiffusion:
                     # "tiling": False,
                     # "do_not_save_samples": False,
                     # "do_not_save_grid": False,
-                    # "negative_prompt": "string",
+                    "negative_prompt": negative_prompt,
                     # "eta": 0,
                     # "s_min_uncond": 0,
                     # "s_churn": 0,
@@ -213,7 +253,7 @@ class StableDiffusion:
                     # "alwayson_scripts": {}
                 }
 
-        if self.DEBUG: debug_log(f'{prompt=}\n{step=}\n{num=}\n{height=}\n{width=}\n{cfg=}\n{seed=}\n{upscale=}\n{payload=}')
+        if self.DEBUG: debug_log(f'{payload=}')
 
         await send_msg_to_usr(msg, f"Creating image with input: `{usr_msg}`")
 
@@ -231,7 +271,7 @@ class StableDiffusion:
         '''
         load the model onto the gpu with the REST API params
         '''
-        cmd = 'tmux new-session -d -s sd_api && tmux send-keys -t sd_api "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --nowebui" C-m'
+        cmd = f'tmux new-session -d -s {self.tmux_session_name} && tmux send-keys -t {self.tmux_session_name} "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --nowebui" C-m'
         run_bash(cmd)
         if self.DEBUG: debug_log("Starting sd server...")
         time.sleep(10) # LOL...
@@ -246,7 +286,7 @@ class StableDiffusion:
         '''
         unload the model
         '''
-        cmd = 'tmux kill-session -t sd_api'
+        cmd = f'tmux kill-session -t {self.tmux_session_name}'
         run_bash(cmd)
         if self.DEBUG: debug_log("Stopped sd current server.")
         self.stable_diffusion_toggle = False
