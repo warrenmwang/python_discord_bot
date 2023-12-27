@@ -36,6 +36,9 @@
   ```
 - Convenience access to a local stable diffusion server (uses automatic1111's `stable-diffusion-webui` repo)
 
+## Video Demonstration
+[![youtube video demonstration](https://img.youtube.com/vi/KFOIwvz3dY4/0.jpg)](https://www.youtube.com/watch?v=KFOIwvz3dY4)
+
 ## Quick setup (using pip/conda)
 1. Prerequisites:
     - Get Discord Bot Token
