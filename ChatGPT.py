@@ -77,6 +77,11 @@ class ChatGPT:
         self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
 
+        # modifying prompts
+        self.modify_prompts_state = None
+        self.modify_prompts_state_tmp = None
+        self.personal_assistant_modify_prompts_buff = []
+
         self.commands = {
             "help" : "display this message",
             "convo len" : 'show current gpt context length',
@@ -100,9 +105,8 @@ class ChatGPT:
 
         # initialize prompts
         self.gpt_read_prompts_from_file() # read the prompts from disk
-        self.curr_prompt_name = self.all_gpt_available_prompts[0] # init with first prompt
-        self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
-        self.gpt_context_reset()
+        self.init_prompt_name = "empty" # NOTE: up to user, i like starting with an empty prompt
+        self.gpt_context_reset(prompt_name=self.init_prompt_name)
     
     async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict = None) -> str:
         '''
@@ -139,7 +143,7 @@ class ChatGPT:
                 top_p = float(settings_dict["top_p"][0]),
                 frequency_penalty = float(settings_dict["frequency_penalty"][0]),
                 presence_penalty = float(settings_dict["presence_penalty"][0]),
-                max_tokens = 4096 # TODO: why is this hardcoded?
+                max_tokens = 4096 # NOTE: this is hardcoded like this bc preview models are not ready for prod-level outputs yet
             )
         
         # Run the blocking function in a separate thread using run_in_executor
@@ -305,6 +309,81 @@ class ChatGPT:
             l[0] = {'role':'assistant', 'content':prompt}
         self.gpt_settings["messages"][0] = l
 
+    async def _modify_prompts(self, usr_msg : str) -> str:
+        '''
+        handles changing the prompts for chatgpt
+        returns any message needed to be sent to user
+        '''
+        # user can cancel at any time
+        if usr_msg == "cancel":
+            # cancel modifying any prompts
+            self.modify_prompts_state = None
+            self.modify_prompts_state_tmp = None
+            self.personal_assistant_modify_prompts_buff = []
+            return "Ok, cancelling."
+
+        # Stage 1: usr picks a operator
+        if self.modify_prompts_state_tmp == "asked what to do":
+            # check response
+            if usr_msg == "edit":
+                self.modify_prompts_state_tmp = "edit"
+                return "Ok which prompt would you like to edit? [enter prompt name]"
+            elif usr_msg == "add":
+                self.modify_prompts_state_tmp = "add"
+                return "Ok, write a prompt in this format: [name]<SEP>[PROMPT] w/o the square brackets."
+            elif usr_msg == "delete":
+                self.modify_prompts_state_tmp = "delete"
+                return "Ok, which prompt would you like to delete? [enter prompt name]"
+            elif usr_msg == "changename":
+                self.modify_prompts_state_tmp = "changename"
+                return "Ok, which prompt name would you like to rename? [enter prompt name]"
+            else:
+                return "Invalid response, please try again."
+
+        # Stage 2: usr provides more info for an already chosen operator
+        if self.modify_prompts_state_tmp == "edit":
+            self.personal_assistant_modify_prompts_buff.append(usr_msg)
+            self.modify_prompts_state_tmp = "edit2"
+            return f"Ok, you said to edit {usr_msg}.\nSend me the new prompt for this prompt name. (just the new prompt in its entirety)"
+        if self.modify_prompts_state_tmp == "edit2":
+            # update our mapping of prompt name to prompt dict, then write the new prompts to file
+            prompt_name = self.personal_assistant_modify_prompts_buff.pop()
+            new_prompt = usr_msg
+            self.map_promptname_to_prompt[prompt_name] = new_prompt
+            self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.modify_prompts_state = None
+            self.modify_prompts_state_tmp = None
+            return f"Updated '{prompt_name}' to '{new_prompt}'"
+        if self.modify_prompts_state_tmp == "add":
+            prompt_name = usr_msg.split("<SEP>")[0]
+            prompt = usr_msg.split("<SEP>")[1]
+            self.map_promptname_to_prompt[prompt_name] = prompt
+            self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.modify_prompts_state = None
+            self.modify_prompts_state_tmp = None
+            return f"Added '{prompt_name}' with prompt '{prompt}'"
+        if self.modify_prompts_state_tmp == "delete":
+            prompt_name = usr_msg
+            del self.map_promptname_to_prompt[prompt_name]
+            self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.modify_prompts_state = None
+            self.modify_prompts_state_tmp = None
+            return f"Deleted '{prompt_name}'"
+        if self.modify_prompts_state_tmp == "changename":
+            self.personal_assistant_modify_prompts_buff.append(usr_msg)
+            self.modify_prompts_state_tmp = "changename2"
+            return f"Ok, what would you like to change the {usr_msg} to?"
+        if self.modify_prompts_state_tmp == "changename2":
+            prompt_name = self.personal_assistant_modify_prompts_buff.pop()
+            new_prompt_name = usr_msg
+            prompt = self.map_promptname_to_prompt[prompt_name]
+            del self.map_promptname_to_prompt[prompt_name]
+            self.map_promptname_to_prompt[new_prompt_name] = prompt
+            self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.modify_prompts_state = None
+            self.modify_prompts_state_tmp = None
+            return  f"Changed '{prompt_name}' to '{new_prompt_name}'"
+
     async def modifyParams(self, msg : discord.message.Message, usr_msg : str) -> str:
         '''
         Modifies ChatGPT API params.
@@ -312,6 +391,10 @@ class ChatGPT:
         '''
         # convert shortcut to full command if present
         usr_msg = self.shortcut_cmd_convertor(usr_msg)
+
+        # if in middle of modifying prompts
+        if self.modify_prompts_state is not None:
+            return await self._modify_prompts(usr_msg)
 
         # help
         if usr_msg == "help": return self.commands_help_str
@@ -403,18 +486,20 @@ class ChatGPT:
 
         # add a command to add a new prompt to the list of prompts and save to file
         if usr_msg == "modify prompts":
-            if self.personal_assistant_state is None:
-                self.personal_assistant_state = "modify prompts"
-                self.personal_assistant_modify_prompts_state = "asked what to do" 
-                return f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (edit/add/delete/changename)"
+            if self.modify_prompts_state is None:
+                self.modify_prompts_state = "modify prompts"
+                self.modify_prompts_state_tmp = "asked what to do" 
+                return f"These are the existing prompts:\n{self.get_all_gpt_prompts_as_str()}\nDo you want to edit an existing prompt, add a new prompt, delete a prompt, or change a prompt's name? (`edit` `add` `delete` `changename`)\nNote that you should preface inputs with the command prefix char. You can also stop this process with `cancel`"
 
         # change gpt prompt
         if usr_msg[:13] == "change prompt":
             # accept only the prompt name, update both str of msgs context and the messages list in gptsettings
             try:
-                self.curr_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
-                self.gpt_context_reset()
-                return "New current prompt set to: " + self.curr_prompt_name
+                new_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
+                if new_prompt_name not in self.all_gpt_available_prompts:
+                    return f"Prompt {new_prompt_name} not available. Available prompts: {' '.join(self.all_gpt_available_prompts)}"
+                self.gpt_context_reset(prompt_name=new_prompt_name)
+                return "New current prompt set to: " + new_prompt_name
             except Exception as e:
                 return "usage: change prompt, [new prompt]"
 
@@ -517,11 +602,16 @@ class ChatGPT:
             # get the list of prompts
             self.all_gpt_available_prompts = list(self.map_promptname_to_prompt.keys())
 
-    def gpt_context_reset(self) -> None:
+    def gpt_context_reset(self, prompt_name : str = None) -> None:
         '''
         resets the gpt context
+        > takes an optional input 'prompt_name' that denotes which prompt to use after resetting the thread (None for current, else a str for a new prompt)
         > can be used at the start of program run and whenever a reset is wanted
         '''
+        if prompt_name != None: 
+            self.curr_prompt_name = prompt_name
+            self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
+
         self.gpt_settings["messages"][0] = [] # reset messages, should be gc'd
         self.gpt_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.curr_prompt_str})
     

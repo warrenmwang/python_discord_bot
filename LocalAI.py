@@ -332,56 +332,56 @@ class StableDiffusion:
         await send_msg_to_usr(msg, f"Model swapped to {model_name}")
 
 
-class LLM:
-    '''
-    General class for any kind of local large language model (LLAMA, LLAMA2, LLAMA variants)
-    or small language models / GPT models
-    '''
-    def __init__(self, arch : str, model : str, prompt : str, maxGenLen : int = 100) -> None:
-        '''
-        arch - type of model (llama, nanogpt)
-        model - currently used to distinguish which kind of LLAMA model to use 
-        maxGenLen - maximum length of text generations desired 
-        '''
-        self.arch = arch # e.g. llama
-        self.model = model # e.g. 7B, 13B
-        self.maxGenLen = maxGenLen # maximum length of text generation
-        self.prompt = prompt # prompt for generations
+# class LLM:
+#     '''
+#     General class for any kind of local large language model (LLAMA, LLAMA2, LLAMA variants)
+#     or small language models / GPT models
+#     '''
+#     def __init__(self, arch : str, model : str, prompt : str, maxGenLen : int = 100) -> None:
+#         '''
+#         arch - type of model (llama, nanogpt)
+#         model - currently used to distinguish which kind of LLAMA model to use 
+#         maxGenLen - maximum length of text generations desired 
+#         '''
+#         self.arch = arch # e.g. llama
+#         self.model = model # e.g. 7B, 13B
+#         self.maxGenLen = maxGenLen # maximum length of text generation
+#         self.prompt = prompt # prompt for generations
 
-    async def generate(self, usr_str : str) -> str:
-        '''
-        Generates a text output based on the usr_str with the arch/model specified
-        '''
-        # if self.arch == "nanogptShakespeare":
-        #     return await self.runNanoShakespeare(self.maxGenLen)
-        # elif self.arch == "llama":
-        #     return await self.runLLAMA(usr_str)
+#     async def generate(self, usr_str : str) -> str:
+#         '''
+#         Generates a text output based on the usr_str with the arch/model specified
+#         '''
+#         # if self.arch == "nanogptShakespeare":
+#         #     return await self.runNanoShakespeare(self.maxGenLen)
+#         # elif self.arch == "llama":
+#         #     return await self.runLLAMA(usr_str)
 
-        return await self.runLLAMA(usr_str)
+#         return await self.runLLAMA(usr_str)
 
-    async def runLLAMA(self, usr_str:str)->str:
-        '''
-        given the user str help the user figure out what they want to do by using a local llama program to figure it out
-        no chatgpt here...(this is pretty bad tho if im only using 7B)
-        '''
-        input_ = f"{self.prompt}\n\nUser: {usr_str}\nAgent:"
-        cmd = f'cd llama.cpp && ./main -m ./models/{self.model}/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
-        stdout, _ = run_bash(cmd)
-        ret = stdout.split("Agent:")[1]
-        return ret
+#     async def runLLAMA(self, usr_str:str)->str:
+#         '''
+#         given the user str help the user figure out what they want to do by using a local llama program to figure it out
+#         no chatgpt here...(this is pretty bad tho if im only using 7B)
+#         '''
+#         input_ = f"{self.prompt}\n\nUser: {usr_str}\nAgent:"
+#         cmd = f'cd llama.cpp && ./main -m ./models/{self.model}/ggml-model-q4_0.gguf -n 128 -p "{input_}" -e'
+#         stdout, _ = run_bash(cmd)
+#         ret = stdout.split("Agent:")[1]
+#         return ret
         
-    # async def runNanoShakespeare(self, length : int)->str:
-    #     '''
-    #     generates a random shakespeare snippet from a local GPT trained on shakespeare
-    #     from nanoGPT repo
+#     # async def runNanoShakespeare(self, length : int)->str:
+#     #     '''
+#     #     generates a random shakespeare snippet from a local GPT trained on shakespeare
+#     #     from nanoGPT repo
 
-    #     cut the generation output to be of the input length 
+#     #     cut the generation output to be of the input length 
 
-    #     this is duct-taped together im sorry
-    #     '''
-    #     stdout, stderr = run_bash(f'cd nanoGPT && /home/wang/anaconda3/envs/dev2-py310/bin/python sample.py --out_dir=../ml_weights/shakespeare --max_new_tokens={length}')
-    #     if len(stderr) != 0:
-    #         return f"generation failed -> {stderr}"
-    #     else:
-    #         stdout = stdout.split("\n\n")
-    #         return '\n\n'.join(stdout[1:])
+#     #     this is duct-taped together im sorry
+#     #     '''
+#     #     stdout, stderr = run_bash(f'cd nanoGPT && /home/wang/anaconda3/envs/dev2-py310/bin/python sample.py --out_dir=../ml_weights/shakespeare --max_new_tokens={length}')
+#     #     if len(stderr) != 0:
+#     #         return f"generation failed -> {stderr}"
+#     #     else:
+#     #         stdout = stdout.split("\n\n")
+#     #         return '\n\n'.join(stdout[1:])
