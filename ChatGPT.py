@@ -351,6 +351,7 @@ class ChatGPT:
             new_prompt = usr_msg
             self.map_promptname_to_prompt[prompt_name] = new_prompt
             self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.gpt_read_prompts_from_file()
             self.modify_prompts_state = None
             self.modify_prompts_state_tmp = None
             return f"Updated '{prompt_name}' to '{new_prompt}'"
@@ -359,6 +360,7 @@ class ChatGPT:
             prompt = usr_msg.split("<SEP>")[1]
             self.map_promptname_to_prompt[prompt_name] = prompt
             self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.gpt_read_prompts_from_file()
             self.modify_prompts_state = None
             self.modify_prompts_state_tmp = None
             return f"Added '{prompt_name}' with prompt '{prompt}'"
@@ -366,6 +368,7 @@ class ChatGPT:
             prompt_name = usr_msg
             del self.map_promptname_to_prompt[prompt_name]
             self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.gpt_read_prompts_from_file()
             self.modify_prompts_state = None
             self.modify_prompts_state_tmp = None
             return f"Deleted '{prompt_name}'"
@@ -380,6 +383,7 @@ class ChatGPT:
             del self.map_promptname_to_prompt[prompt_name]
             self.map_promptname_to_prompt[new_prompt_name] = prompt
             self.gpt_save_prompts_to_file() # write the new prompts to file
+            self.gpt_read_prompts_from_file()
             self.modify_prompts_state = None
             self.modify_prompts_state_tmp = None
             return  f"Changed '{prompt_name}' to '{new_prompt_name}'"

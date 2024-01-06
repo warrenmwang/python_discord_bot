@@ -44,70 +44,83 @@ class StableDiffusion:
                 "vaes": "list available VAEs"
         }
         self.help_str = constructHelpMsg(self.help_dict)
-        self.prompting_help = 'usage: `[prompt] -np [negative prompt] -s [steps] -sm [sampler] -n [num] -h [height] -w [width] -c [cfg] -S [seed] -u [upscale value] -ur [upscaler name] -ds [denoising_strength]`\nPrompt example: `photograph of a red, crispy apple, 4k, hyperdetailed -s 20 -n 4 -h 512 -w 512`'
+        self.default_vals = {
+            'steps': 20,
+            'num': 1,
+            'height': 768,
+            'width': 768,
+            'cfg': 8.5,
+            'seed': -1,
+            'upscale': None,
+            'upscaler': 'ESRGAN_4x',
+            'denoising_strength': 0.67,
+            'negative_prompt': None,
+            'sampler': 'Euler'
+        }
+        self.prompting_help = f'usage: `[prompt] -np [negative prompt] -s [steps] -sm [sampler] -n [num] -h [height] -w [width] -c [cfg] -S [seed] -u [upscale value] -ur [upscaler name] -ds [denoising_strength]`\nDefault Values: {constructHelpMsg(self.default_vals)}\nPrompt example: `photograph of a red, crispy apple, 4k, hyperdetailed -s 20 -n 4 -h 512 -w 512`'
 
         # parsing user input
         parser = argparse.ArgumentParser('Argument parser for user input for prompt and parameters.', add_help=False)
         parser.add_argument('prompt', 
                             help='Image generation prompt', 
                             nargs='*') # prompt must be first!
-        parser.add_argument('-s', '--step', 
+        parser.add_argument('-s', '--steps', 
                             type=int, 
                             help='Number of steps to iterate (each step computes the delta from current pixels to pixels "closer" to prompt)', 
                             required=False,
-                            default=20)
+                            default=self.default_vals['steps'])
         parser.add_argument('-n', '--num', 
                             type=int, 
                             help='Number of images to create', 
                             required=False,
-                            default=1)
+                            default=self.default_vals['num'])
         parser.add_argument('-h', '--height', 
                             type=int, 
                             help='Height in pixels', 
                             required=False,
-                            default=768)
+                            default=self.default_vals['height'])
         parser.add_argument('-w', '--width', 
                             type=int, 
                             help='Width in pixels', 
                             required=False,
-                            default=768)
+                            default=self.default_vals['width'])
         parser.add_argument('-c', '--cfg', 
                             type=float, 
                             help='CFG scale (higher means follow prompt more)', 
                             required=False,
-                            default=8.5)
+                            default=self.default_vals['cfg'])
         parser.add_argument('-S', '--seed', 
                             type=int,
                             help="Seed (controls randomness)",
                             required=False,
-                            default=-1)
+                            default=self.default_vals['seed'])
         parser.add_argument('-u', '--upscale', 
                             type=float,
                             help="Resolution upscale value (e.g. 1.5 or 2) -- an input value will enable the upscaler",
                             required=False,
-                            default=None)
+                            default=self.default_vals['upscale'])
         parser.add_argument('-ur', '--upscaler', 
                             type=str,
                             help='Upscaler name (e.g. Lanczos, Nearest, etc.)',
                             required=False,
-                            default='ESRGAN_4x')
+                            default=self.default_vals['upscaler'])
         parser.add_argument('-ds', '--denoising_strength',
                             type=float,
                             help='Denoising strength for upscaling',
                             required=False,
-                            default=0.67)
+                            default=self.default_vals['denoising_strength'])
         parser.add_argument('-np', '--negative_prompt', 
                             nargs='*', 
                             type=str,
                             help='Negative image generation prompt to avoid certain themes or elements', 
                             required=False,
-                            default=None)
+                            default=self.default_vals['negative_prompt'])
         parser.add_argument('-sm', '--sampler',
                             nargs='*',
                             type=str,
                             help="Sampler",
                             required=False,
-                            default='Euler')
+                            default=self.default_vals['sampler'])
 
         self.parser = parser
 
@@ -188,7 +201,7 @@ class StableDiffusion:
         prompt = ' '.join(args.prompt)
         negative_prompt = ' '.join(args.negative_prompt) if args.negative_prompt is not None else ''
 
-        step = args.step
+        steps = args.steps
         num = args.num
         height = args.height
         width = args.width
@@ -228,7 +241,7 @@ class StableDiffusion:
                     "sampler_name": sampler,
                     # "batch_size": 1,
                     "n_iter": num,
-                    "steps": step,
+                    "steps": steps,
                     "cfg_scale": cfg,
                     "width": width,
                     "height": height,
@@ -271,9 +284,9 @@ class StableDiffusion:
         '''
         load the model onto the gpu with the REST API params
         '''
+        if self.DEBUG: debug_log("Starting sd server...")
         cmd = f'tmux new-session -d -s {self.tmux_session_name} && tmux send-keys -t {self.tmux_session_name} "cd stable-diffusion-webui && ./webui.sh --xformers --disable-safe-unpickl --nowebui" C-m'
         run_bash(cmd)
-        if self.DEBUG: debug_log("Starting sd server...")
         time.sleep(10) # LOL...
         if self.DEBUG: debug_log("Server started.")
         self.stable_diffusion_toggle = True
