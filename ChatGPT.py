@@ -90,7 +90,7 @@ class ChatGPT:
             "reset thread" : 'reset gpt context length',
             "show thread" : 'show the entire current convo context',
             "gptsettings" : 'show the current gpt settings',
-            "gptset": "format is `gptset, [setting_name], [new_value]` modify gpt settings",
+            "gptset": "format is `gptset [setting_name] [new_value]` modify gpt settings",
             "curr prompt": "get the current prompt name",
             "change prompt": "format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)",
             "show prompts": "show the available prompts for gpt",
@@ -229,7 +229,7 @@ class ChatGPT:
                 top_p = float(settings_dict["top_p"][0]),
                 frequency_penalty = float(settings_dict["frequency_penalty"][0]),
                 presence_penalty = float(settings_dict["presence_penalty"][0]),
-                max_tokens = 4096 # TODO: why is this hardcoded?
+                max_tokens = 4096 # TODO: hardcoded bc preview models are not ready for prod-level outputs yet
             )
         
         # Run the blocking function in a separate thread using run_in_executor
@@ -580,6 +580,9 @@ class ChatGPT:
 
         Returns None if ok, else returns a error msg string.
         '''
+        if ',' in usr_msg:
+            usr_msg = usr_msg.replace(',', ' ')
+
         try:
             self.gptset(usr_msg, self.gpt_settings)
         except Exception as e:
@@ -661,7 +664,7 @@ class ChatGPT:
         '''
         format is 
 
-        GPTSET, [setting_name], [new_value]
+        GPTSET [setting_name] [new_value]
 
         sets the specified gpt parameter to the new value
         

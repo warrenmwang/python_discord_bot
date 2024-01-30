@@ -16,6 +16,8 @@ class CommandInterpreter:
         self.DEBUG = debug
         self.help_str = help_str
         self.tmp_dir = "./tmp"
+        if not os.path.exists(self.tmp_dir):
+            os.makedirs(self.tmp_dir)
 
         # Dalle
         self.dalle = Dalle(debug)
