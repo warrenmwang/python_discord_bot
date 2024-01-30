@@ -12,6 +12,7 @@ class PersonalAssistant:
     def __init__(self, debug:bool):
         self.DEBUG = debug
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
+        assert self.personal_assistant_channel != '', "PERSONAL_ASSISTANT_CHANNEL environment variable not set."
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
         self.personal_assistant_modify_prompts_buff = []

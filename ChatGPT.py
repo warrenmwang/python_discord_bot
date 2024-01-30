@@ -53,6 +53,7 @@ class ChatGPT:
 
         self.client = OpenAI()
         self.gpt_channel_name = os.getenv('GPT_CHANNEL_NAME')
+        assert self.gpt_channel_name != '', "GPT_CHANNEL_NAME env var not set"
         self.gpt_model_to_max_tokens = {
             "gpt-4-1106-preview": [128000, "Apr 2023"], 
             "gpt-4-vision-preview" : [128000, "Apr 2023"], 
@@ -73,6 +74,7 @@ class ChatGPT:
 
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
+        assert self.gpt_prompts_file != '', "GPT_PROMPTS_FILE env var not set"
         self.all_gpt_available_prompts = None # list of all prompt names
         self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
@@ -105,7 +107,7 @@ class ChatGPT:
 
         # initialize prompts
         self.gpt_read_prompts_from_file() # read the prompts from disk
-        self.init_prompt_name = "empty" # NOTE: up to user, i like starting with an empty prompt
+        self.init_prompt_name = "empty" # Default to an empty prompt, if not present in user's prompts list, append it
         self.gpt_context_reset(prompt_name=self.init_prompt_name)
     
     async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict = None) -> str:
@@ -587,24 +589,43 @@ class ChatGPT:
     def gpt_save_prompts_to_file(self) -> None:
         '''
         saves the prompt_name -> prompt dictionary to disk via pickling
+        > not thread safe
         '''
-        with open(self.gpt_prompts_file, "wb") as f:
-            pickle.dump(self.map_promptname_to_prompt, f, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(self.gpt_prompts_file, "w") as f:
+            # save the prompts to disk
+            for k,v in self.map_promptname_to_prompt.items():
+                f.write(f"{k}<SEP>{v}\n")
 
     def gpt_read_prompts_from_file(self) -> None:
         '''
         reads all the prompts from the prompt file and stores them in self.all_gpt_available_prompts and the mapping
+        > not thread safe
         '''
         # reset curr state of prompts
         self.all_gpt_available_prompts = [] # prompt names
         self.map_promptname_to_prompt = {} # prompt name -> prompt
 
+        # create the prompts file if it doesn't exist
+        if not os.path.exists(self.gpt_prompts_file):
+            with open(self.gpt_prompts_file, "w") as f:
+                pass
+
         # load in all the prompts
-        with open(self.gpt_prompts_file, "rb") as f:
-            # load in the pickled object
-            self.map_promptname_to_prompt = pickle.load(f)
-            # get the list of prompts
-            self.all_gpt_available_prompts = list(self.map_promptname_to_prompt.keys())
+        with open(self.gpt_prompts_file, "r") as f:
+            # read the plain text prompts file, should be in format:
+            # [prompt_name]<SEP>[prompt]
+            lines = f.readlines()
+            for line in lines:
+                tmp = line.split("<SEP>")
+                prompt_name = tmp[0].strip()
+                prompt = tmp[1].strip()
+                self.map_promptname_to_prompt[prompt_name] = prompt
+                self.all_gpt_available_prompts.append(prompt_name)
+            
+            # add empty prompt if not present
+            if 'empty' not in self.all_gpt_available_prompts:
+                self.map_promptname_to_prompt['empty'] = ''
+                self.all_gpt_available_prompts.append('empty')
 
     def gpt_context_reset(self, prompt_name : str = None) -> None:
         '''

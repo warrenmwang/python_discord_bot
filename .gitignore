@@ -8,3 +8,4 @@ runme.sh
 cron_start.sh
 testing/
 chroma_data/
+prompts.txt

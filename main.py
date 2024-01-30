@@ -7,27 +7,42 @@ from ChatGPT import ChatGPT
 from PersonalAssistant import PersonalAssistant
 import argparse
 from Utils import send_msg_to_usr, debug_log
+import uuid
 
 class Main:
-    def __init__(self, debug : bool):
+    def __init__(self, args : argparse.Namespace):
+        # args
+        debug = args.debug
+        self.stable_diffusion_enabled = args.stable_diffusion
+        if debug: debug_log("Debug mode enabled.")
+        if debug: debug_log(f"Stable Diffusion enabled: {self.stable_diffusion_enabled}")
+
         # api keys
         self.TOKEN = os.getenv('DISCORD_TOKEN')
+        assert self.TOKEN != '', "DISCORD_TOKEN environment variable not set."
 
         # ChatGPT
         self.ChatGPT = ChatGPT(debug)
         self.chatgpt_channel = self.ChatGPT.gpt_channel_name
+        if debug: debug_log(f"Started ChatGPT with channel name: {self.chatgpt_channel}")
 
         # stable diffusion
-        self.StableDiffusion = StableDiffusion(debug)
-        self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
+        if self.stable_diffusion_enabled:
+            self.StableDiffusion = StableDiffusion(debug)
+            self.stable_diffusion_channel = self.StableDiffusion.stable_diffusion_channel
+            if debug: debug_log(f"Started Stable Diffusion with channel name: {self.stable_diffusion_channel}")
+        else:
+            self.stable_diffusion_channel = uuid.uuid4().hex
 
         # personal assistant
         self.PersonalAssistant = PersonalAssistant(debug)
         self.personal_assistant_channel = self.PersonalAssistant.personal_assistant_channel
+        if debug: debug_log(f"Started Personal Assistant with channel name: {self.personal_assistant_channel}")
 
         # discord
         self.intents = discord.Intents.all()
         self.client = discord.Client(intents=self.intents)
+        if debug: debug_log("Started Discord Client.")
 
     def run(self):
         '''Main function'''
@@ -48,6 +63,10 @@ class Main:
             # don't respond to yourself
             if msg.author == self.client.user:
                 return 
+            
+            ############################## ChatGPT API ##############################
+            if channel == self.chatgpt_channel:
+                return await send_msg_to_usr(msg, await self.ChatGPT.main(msg))
 
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:
@@ -55,22 +74,20 @@ class Main:
 
             ############################## Stable Diffusion ##############################
             if channel == self.stable_diffusion_channel:
-                return await self.StableDiffusion.main(msg)
-
-            ############################## ChatGPT API ##############################
-            if channel == self.chatgpt_channel:
-                return await send_msg_to_usr(msg, await self.ChatGPT.main(msg))
+                if self.stable_diffusion_enabled:
+                    return await self.StableDiffusion.main(msg)
+                else:
+                    return await send_msg_to_usr(msg, "Stable Diffusion is not enabled.")            
 
         self.client.run(self.TOKEN)
 
 if __name__ == "__main__":
     # parse for debug flag on cli
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--debug", help="enable debug printing", action="store_true")
+    parser.add_argument("-d", "--debug", help="enable debug printing", action="store_true", default=False)
+    parser.add_argument("-s", '--stable_diffusion', help="enable stable diffusion", action="store_true", default=False)
     args = parser.parse_args()
-    debug = args.debug
 
     # run
-    if debug: debug_log(f"debug printing enabled")
-    bot = Main(debug)
+    bot = Main(args)
     bot.run()
