@@ -60,7 +60,7 @@ class Main:
             channel = str(msg.channel)
 
             ############################## Checks for not doing anything ##############################
-            # don't respond to yourself
+            # bot doesn't response to self
             if msg.author == self.client.user:
                 return 
             
@@ -82,7 +82,7 @@ class Main:
         self.client.run(self.TOKEN)
 
 if __name__ == "__main__":
-    # parse for debug flag on cli
+    # parse cli args
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", help="enable debug printing", action="store_true", default=False)
     parser.add_argument("-s", '--stable_diffusion', help="enable stable diffusion", action="store_true", default=False)

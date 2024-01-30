@@ -13,7 +13,6 @@ import io, base64
 class Dalle:
     def __init__(self, debug:bool):
         self.DEBUG = debug
-        # openai.api_key = os.getenv("gpt_OPENAI_API_KEY")
         self.model = "dall-e-3"
         self.client = OpenAI()
 
