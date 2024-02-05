@@ -53,6 +53,15 @@ async def send_msg_to_usr(msg : discord.message.Message, usr_msg : str) -> None:
         end += DISCORD_MSGLEN_CAP
         diff -= DISCORD_MSGLEN_CAP
 
+async def send_img_to_usr(msg : discord.message.Message, image : Image) -> None:
+    '''send the image as bytes '''
+    with io.BytesIO() as image_binary:
+        image.save(image_binary, format='PNG')
+        image_binary.seek(0)
+        await msg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
+
+# TODO: i am going to have to depreciate this function and send any files as bytes in memory to the user
+# rather than introducing a file system dependency
 async def send_file_to_usr(msg : discord.message.Message, filePath : str) -> None:
     '''given the image path in the filesystem, send it to the author of the msg'''
     await msg.channel.send(file=discord.File(filePath))

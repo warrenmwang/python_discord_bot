@@ -54,6 +54,7 @@ class ChatGPT:
         self.gpt_channel_name = os.getenv('GPT_CHANNEL_NAME')
         assert self.gpt_channel_name != '', "GPT_CHANNEL_NAME env var not set"
         self.gpt_model_to_max_tokens = {
+            "gpt-4-0125-preview": [128000, "Apr 2023"],
             "gpt-4-1106-preview": [128000, "Apr 2023"], 
             "gpt-4-vision-preview" : [128000, "Apr 2023"], 
             "gpt-4" : [8192, "Sep 2021"]
@@ -484,7 +485,7 @@ class ChatGPT:
             curr_model = self.gpt_settings["model"][0]
             if self.DEBUG: debug_log(f"swap: {curr_model=}")
             if curr_model == "gpt-4-vision-preview":
-                await self.modifygptset(msg, "gptset model gpt-4-1106-preview")
+                await self.modifygptset(msg, "gptset model gpt-4-0125-preview")
             else:
                 await self.modifygptset(msg, "gptset model gpt-4-vision-preview")
             return f'Set to: {self.gpt_settings["model"][0]}'

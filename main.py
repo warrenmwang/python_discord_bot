@@ -33,6 +33,7 @@ class Main:
             if debug: debug_log(f"Started Stable Diffusion with channel name: {self.stable_diffusion_channel}")
         else:
             self.stable_diffusion_channel = uuid.uuid4().hex
+            if debug: debug_log(f"Stable Diffusion is not enabled. Continuing.")
 
         # personal assistant
         self.PersonalAssistant = PersonalAssistant(debug)
@@ -86,6 +87,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", help="enable debug printing", action="store_true", default=False)
     parser.add_argument("-s", '--stable_diffusion', help="enable stable diffusion", action="store_true", default=False)
+    parser.add_argument("-r", '--rag', help='enable RAG for Personal Assistant', action="store_true", default=False)
     args = parser.parse_args()
 
     # run

@@ -1,7 +1,6 @@
 import discord
 import os
 from ChatGPT import ChatGPT
-# from LocalAI import LLM
 from CommandInterpreter import CommandInterpreter
 from Utils import send_msg_to_usr, constructHelpMsg
 
@@ -35,11 +34,9 @@ class PersonalAssistant:
         prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
         self.gpt_interpreter._setPrompt(prompt)
 
-        # self.llama_pa_prompt = f"You are a virtual assistant agent discord bot. The available commands are {self.personal_assistant_commands}. Help the user figure out what they want to do. The following is the conversation where the user enters the unknown command. Output a one sentence response."
-        # self.llama_pa_toggle = False
-        # self.llama_interpreter = LLM('llama', '7B', self.llama_pa_prompt)
+        print("got here 2")
 
-        self.command_interpreter = CommandInterpreter(self.help_str, self.gpt_interpreter)
+        self.command_interpreter = CommandInterpreter(self.help_str, debug=debug, enableRAG=False)
 
     async def main(self, msg : discord.message.Message) -> str:
         '''
@@ -68,8 +65,7 @@ class PersonalAssistant:
         # hard coded commands
         if usr_msg[0] == self.cmd_prefix:
             x = await self.command_interpreter.main(msg, usr_msg[1:])
-            if x != "Unknown command.":
-                return x
+            if x != 'Unknown command.': return x
             # see if it's a gpt modify command
             gpt_response = await self.gpt_interpreter.main(msg)
             if gpt_response != "Unknown command.":

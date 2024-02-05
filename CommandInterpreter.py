@@ -3,16 +3,20 @@ from Utils import send_msg_to_usr
 from ChatGPT import Dalle, ChatGPT
 import discord
 import asyncio
-from Utils import send_file_to_usr, find_text_between_markers, delete_file, read_pdf
+from Utils import send_file_to_usr, find_text_between_markers, delete_file, read_pdf, debug_log, send_img_to_usr
 from VectorDB import VectorDB
 import requests
+import io
 
 class CommandInterpreter:
     '''
     Tries to interpret inputs as commands and perform the action requested
     If the action is not found to be a hard-coded command, reply the "command" or gpt response to user.
     '''
-    def __init__(self, help_str : str, gpt_interpreter : ChatGPT, debug : bool = False):
+    def __init__(self, help_str : str, gpt_interpreter : ChatGPT = None, debug : bool = False, enableRAG : bool = False):
+        '''
+        an option to enable/disable RAG bc it is more computationally expensive, and i dont want to spend money in the cloud
+        '''
         self.DEBUG = debug
         self.help_str = help_str
         self.tmp_dir = "./tmp"
@@ -21,19 +25,24 @@ class CommandInterpreter:
 
         # Dalle
         self.dalle = Dalle(debug)
-        self.dalle_output_path = f"{self.tmp_dir}/dalle_output.png"
 
         # VectorDB for RAG
-        self.gpt_interpreter = gpt_interpreter
-        chroma_data_path = "chroma_data/"
-        embed_model = "all-MiniLM-L6-v2"
-        collection_name = "main"
-        self.vectorDB = VectorDB(chroma_data_path, embed_model, collection_name)
+        self.enableRAG = enableRAG
+        if self.enableRAG:
+            self.gpt_interpreter = gpt_interpreter
+            chroma_data_path = "chroma_data/"
+            embed_model = "all-MiniLM-L6-v2"
+            collection_name = "main"
+            self.vectorDB = VectorDB(chroma_data_path, embed_model, collection_name)
+        else:
+            if debug: debug_log("CommandInterpreter: RAG is not enabled.")
 
     async def main(self, msg : discord.message.Message, command : str) -> None:
         '''
         tries to map the usr_msg to a functionality
         at this point, chatgpt should've interpretted any user command into one of these formats
+
+        If return anything other than None, then it is a response to the user (likely an error message)
 
         Assumes: command does NOT have a command prefix symbol.
         '''
@@ -67,17 +76,19 @@ class CommandInterpreter:
             # draw images using dalle api
             # for now, keep things simple with just the word draw semicolon and then the prompt
             try:
-                prompt = command.split(";")[1].strip() # parse prompt out of command, assumes NO SEMICOLONS in prompt lol
+                prompt = command.split(";")
+                if len(prompt) != 2: return "Invalid draw command."
+                prompt = prompt[1].strip()
+                if len(prompt) == 0: return "Cannot draw empty prompt."
                 await send_msg_to_usr(msg, f"Creating an image of `{prompt}`")
-                image = await self.dalle.main(prompt)
-                image.save(self.dalle_output_path)
-                await send_file_to_usr(msg, self.dalle_output_path)
+                await send_img_to_usr(msg, await self.dalle.main(prompt))
                 return 
             except Exception as error:
                 return error
 
         ### Vector DB
         if command == "upload":
+            if not self.enableRAG: return "RAG is not enabled. Upload cannot be performed."
             if msg.attachments:
                 for attachment in msg.attachments:
                     # pdfs (grab embedded and ocr text -- use both in context)
@@ -99,6 +110,7 @@ class CommandInterpreter:
             return "Upload complete."
 
         if command[:5] == "query":
+            if not self.enableRAG: return "RAG is not enabled. Query cannot be performed."
             # get context from db
             db_query_prompt = command[6:]
             db_context = self.vectorDB.query(db_query_prompt)[0]
