@@ -34,8 +34,6 @@ class PersonalAssistant:
         prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
         self.gpt_interpreter._setPrompt(prompt)
 
-        print("got here 2")
-
         self.command_interpreter = CommandInterpreter(self.help_str, debug=debug, enableRAG=False)
 
     async def main(self, msg : discord.message.Message) -> str:
