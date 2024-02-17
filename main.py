@@ -6,7 +6,7 @@ from LocalAI import StableDiffusion
 from ChatGPT import ChatGPT
 from PersonalAssistant import PersonalAssistant
 import argparse
-from Utils import send_msg_to_usr, debug_log
+from Utils import send_msg_to_usr, debug_log, runTryExcept
 import uuid
 
 class Main:
@@ -67,11 +67,14 @@ class Main:
             
             ############################## ChatGPT API ##############################
             if channel == self.chatgpt_channel:
-                return await send_msg_to_usr(msg, await self.ChatGPT.main(msg))
+                chatgptresp = await runTryExcept(self.ChatGPT.main, msg=msg)
+                return await send_msg_to_usr(msg, chatgptresp)
 
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:
-                return await send_msg_to_usr(msg, await self.PersonalAssistant.main(msg))
+                # return await send_msg_to_usr(msg, await self.PersonalAssistant.main(msg))
+                paresp = await runTryExcept(self.PersonalAssistant.main, msg=msg)
+                return await send_msg_to_usr(msg, paresp)
 
             ############################## Stable Diffusion ##############################
             if channel == self.stable_diffusion_channel:

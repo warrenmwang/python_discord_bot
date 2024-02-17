@@ -7,6 +7,8 @@ import pytesseract # OCR engine
 from PIL import Image
 import io
 import datetime
+from typing import Callable, Any
+import asyncio
 
 # CONSTANTS
 DISCORD_MSGLEN_CAP=2000
@@ -117,3 +119,16 @@ def read_pdf(file_path: str)->tuple[str,str]:
         all_ocr_text += ocr_text
 
     return all_embedded_text, all_ocr_text
+
+async def runTryExcept(foo : Callable, **kwargs) -> Any:
+    # given a function and the input paarms, 
+    # run the function with the given inputs params into it
+    # and return the error message as a string if there is one
+    # otherwise, return whatever the function returns
+    try:
+        if asyncio.iscoroutinefunction(foo):
+            return await foo(**kwargs)
+        else:
+            return foo(**kwargs)
+    except Exception as e:
+        return str(e)
