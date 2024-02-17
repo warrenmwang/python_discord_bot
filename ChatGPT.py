@@ -15,9 +15,6 @@ class Dalle:
         self.DEBUG = debug
         self.model = "dall-e-3"
         self.client = OpenAI()
-
-    # TODO: there's also option to allow editing of images only with DALLE2 model
-    # note however that inpatining/outpainting requires us manually generating a mask and using that mask to edit the image
         
     async def main(self, prompt : str) -> Image:
         '''
@@ -53,21 +50,26 @@ class ChatGPT:
         self.client = OpenAI()
         self.gpt_channel_name = os.getenv('GPT_CHANNEL_NAME')
         assert self.gpt_channel_name != '', "GPT_CHANNEL_NAME env var not set"
-        self.gpt_model_to_max_tokens = {
-            "gpt-4-0125-preview": [128000, "Apr 2023"],
-            "gpt-4-1106-preview": [128000, "Apr 2023"], 
-            "gpt-4-vision-preview" : [128000, "Apr 2023"], 
-            "gpt-4" : [8192, "Sep 2021"]
+        # format: [max return tokens] [context length] [knowledge cutoff]
+        self.gpt_models_info = {
+            "gpt-4-0125-preview": [4096, 128000, "Dec 2023"],
+            "gpt-4-1106-preview": [4096, 128000, "Apr 2023"], 
+            "gpt-4-vision-preview" : [4096, 128000, "Apr 2023"], 
+            "gpt-4" : [8192, 8192, "Sep 2021"]
         }
+        # initial settings
+        defaultModel = 'gpt-4-vision-preview'
         self.gpt_settings = {
-            "model": ["gpt-4-vision-preview", "str"], 
+            "model": [defaultModel, "str"], 
             "prompt": ["", "str"],
             "messages" : [[], "list of dicts"],
             "temperature": ["0.0", "float"],
             "top_p": ["1.0", "float"],
             "frequency_penalty": ["0", "float"],
             "presence_penalty": ["0", "float"],
-            "max_tokens": [128000, "int"],
+            "max_tokens": [self.gpt_models_info[defaultModel][0], "int"],
+            "context_length": [self.gpt_models_info[defaultModel][1], "int"],
+            "knowledge_cutoff": [self.gpt_models_info[defaultModel][2], "str"]
         }
         self.chatgpt_name="assistant"
         self.cmd_prefix = "!"
@@ -145,7 +147,7 @@ class ChatGPT:
                 top_p = float(settings_dict["top_p"][0]),
                 frequency_penalty = float(settings_dict["frequency_penalty"][0]),
                 presence_penalty = float(settings_dict["presence_penalty"][0]),
-                max_tokens = 4096 # NOTE: this is hardcoded like this bc preview models are not ready for prod-level outputs yet
+                max_tokens = int(settings_dict["max_tokens"][0])
             )
         
         # Run the blocking function in a separate thread using run_in_executor
@@ -229,7 +231,7 @@ class ChatGPT:
                 top_p = float(settings_dict["top_p"][0]),
                 frequency_penalty = float(settings_dict["frequency_penalty"][0]),
                 presence_penalty = float(settings_dict["presence_penalty"][0]),
-                max_tokens = 4096 # TODO: hardcoded bc preview models are not ready for prod-level outputs yet
+                max_tokens = int(settings_dict["max_tokens"][0])
             )
         
         # Run the blocking function in a separate thread using run_in_executor
@@ -251,7 +253,7 @@ class ChatGPT:
         # get the current thread length
         curr_thread = await self.get_curr_gpt_thread()
         curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
-        while curr_thread_len_in_tokens > int(self.gpt_settings["max_tokens"][0]):
+        while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
             # remove the 2nd oldest message from the thread (first oldest is the prompt)
             self.gpt_settings["messages"][0].pop(1)
         
@@ -283,7 +285,7 @@ class ChatGPT:
         # get the current thread length
         curr_thread = await self.get_curr_gpt_thread()
         curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
-        while curr_thread_len_in_tokens > int(self.gpt_settings["max_tokens"][0]):
+        while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
             # remove the 2nd oldest message from the thread (first oldest is the prompt)
             self.gpt_settings["messages"][0].pop(1)
         
@@ -467,7 +469,7 @@ class ChatGPT:
 
         # list available models of interest
         if usr_msg == "models":
-            tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt_model_to_max_tokens.items()])
+            tmp = "".join([f"{k}: {v}\n" for k,v in self.gpt_models_info.items()])
             ret_str = f"Available models:\n{tmp}" 
             if self.DEBUG: debug_log(f"!models\n {tmp}")
             return ret_str
@@ -677,7 +679,7 @@ class ChatGPT:
 
         # if setting a new model, update the max_tokens
         if setting == "model":
-            x = self.gpt_model_to_max_tokens[new_val] # (max_tokens, date of latest date)
+            x = self.gpt_models_info[new_val] # (max_tokens, date of latest date)
             self.gpt_settings["max_tokens"][0] = x[0]
 
     def get_all_gpt_prompts_as_str(self):
