@@ -179,7 +179,7 @@ class ChatGPT:
         ]
 
         # attachments 
-        text_file_formats = ['.txt', '.c', '.cpp', '.py', '.java', '.js', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md']
+        text_file_formats = ['.txt', '.c', '.cpp', '.py', '.ipynb', '.java', '.js', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md']
         image_file_formats = ['.jpg', '.png', '.heic']
         if msg.attachments:
             for attachment in msg.attachments:
