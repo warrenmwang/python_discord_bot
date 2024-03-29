@@ -3,12 +3,13 @@ import os
 from ChatGPT import ChatGPT
 from CommandInterpreter import CommandInterpreter
 from Utils import send_msg_to_usr, constructHelpMsg
+from Message import Message
 
 class PersonalAssistant:
     '''
     Personal assistant, interprets hard-coded and arbitrary user commands/messages
     '''
-    def __init__(self, debug:bool):
+    def __init__(self, debug:bool, enableRAG:bool):
         self.DEBUG = debug
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
         assert self.personal_assistant_channel != '', "PERSONAL_ASSISTANT_CHANNEL environment variable not set."
@@ -34,9 +35,12 @@ class PersonalAssistant:
         prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
         self.gpt_interpreter._setPrompt(prompt)
 
-        self.command_interpreter = CommandInterpreter(self.help_str, debug=debug, enableRAG=False)
+        self.command_interpreter = CommandInterpreter(help_str=self.help_str, 
+                                                      gpt_interpreter=self.gpt_interpreter,
+                                                      debug=debug, 
+                                                      enableRAG=enableRAG)
 
-    async def main(self, msg : discord.message.Message) -> str:
+    async def main(self, msg : Message) -> str:
         '''
         Handles the user input for one of the hard-coded commands, if unable to find a hard-coded command to fulfill request
         will use one of the LLM interpreters available (for now local LLAMA or chatgpt)
@@ -46,7 +50,7 @@ class PersonalAssistant:
         2. GPT Interpreter Settings
         2. ChatGPT Response -> Try hard coded, otherwise send back to user
         '''
-        usr_msg = str(msg.content)
+        usr_msg = msg.content
 
         # handle personal assistant state (if any)
         if self.personal_assistant_state == "modify prompts":

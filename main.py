@@ -37,7 +37,7 @@ class Main:
             if debug: debug_log(f"Stable Diffusion is not enabled. Continuing.")
 
         # personal assistant
-        self.PersonalAssistant = PersonalAssistant(debug)
+        self.PersonalAssistant = PersonalAssistant(debug, args.rag)
         self.personal_assistant_channel = self.PersonalAssistant.personal_assistant_channel
         if debug: debug_log(f"Started Personal Assistant with channel name: {self.personal_assistant_channel}")
 
@@ -57,35 +57,36 @@ class Main:
         ########################### ON ANY MSG ############################
 
         @self.client.event
-        async def on_message(msg : discord.message.Message):
+        async def on_message(discordMsg : discord.message.Message):
             '''Entrance function for any message sent to any channel in the guild/server.'''
-            channel = str(msg.channel)
+            channel = str(discordMsg.channel)
 
             ############################## Checks for not doing anything ##############################
             # bot doesn't response to self
-            if msg.author == self.client.user:
+            if discordMsg.author == self.client.user:
                 return 
             
             myMsg = Message()
-            myMsg.importFromDiscord(msg)
+            myMsg.importFromDiscord(discordMsg)
             
             ############################## ChatGPT API ##############################
             if channel == self.chatgpt_channel:
                 chatgptresp = await runTryExcept(self.ChatGPT.main, msg=myMsg)
-                return await send_msg_to_usr(msg, chatgptresp)
+                return await send_msg_to_usr(myMsg, chatgptresp)
 
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:
                 # return await send_msg_to_usr(msg, await self.PersonalAssistant.main(msg))
-                paresp = await runTryExcept(self.PersonalAssistant.main, msg=msg)
-                return await send_msg_to_usr(msg, paresp)
+                paresp = await runTryExcept(self.PersonalAssistant.main, msg=myMsg)
+                # paresp = await self.PersonalAssistant.main(msg=myMsg)
+                return await send_msg_to_usr(myMsg, paresp)
 
             ############################## Stable Diffusion ##############################
             if channel == self.stable_diffusion_channel:
                 if self.stable_diffusion_enabled:
-                    return await self.StableDiffusion.main(msg)
+                    return await self.StableDiffusion.main(myMsg)
                 else:
-                    return await send_msg_to_usr(msg, "Stable Diffusion is not enabled.")            
+                    return await send_msg_to_usr(myMsg, "Stable Diffusion is not enabled.")            
 
         self.client.run(self.TOKEN)
 

@@ -6,11 +6,12 @@ chatbot / personal assistant logic.
 I realized I needed to decouple things and introduce this common data structure
 after I wanted to introduce unit tests.
 """
+from __future__ import annotations
+
 # for importing code from Utils
 import sys
 sys.path.append('..')
 
-import discord
 import requests
 import base64
 from Utils import read_pdf_from_memory
@@ -28,6 +29,14 @@ class MyPDF:
         self.raw_bytes = raw_bytes
 
 class Message:
+    '''
+    Standard attachments format, as declared by myself, is going to be:
+        dict[str -> list[str | object]]
+    where the contents of the lists varies for key:
+        1. texts: str
+        2. images: base64 encoded str
+        3. pdfs: MyPDF Class Objects
+    '''
     def __init__(self):
         pass
 
@@ -36,6 +45,7 @@ class Message:
 
         self.content = msg.content # str
         self.author = msg.author   # discord.User | discord.Member
+        self.discordMsg = msg      # discord.message.Message
 
         self.attachments = None
 
@@ -74,6 +84,8 @@ class Message:
                 # pdfs (save as a MyPDF object)
                 if attachment.filename.endswith('.pdf'):
                     response = requests.get(attachment.url)
+                    if response.status_code != 200:
+                        raise MyCustomException(f'request got status code: {response.status_code}')
                     embedded_text, ocr_text = read_pdf_from_memory(response.content)
                     mypdf = MyPDF(attachment.url, embedded_text, ocr_text, response.content) 
                     self.attachments['pdfs'].append(mypdf)

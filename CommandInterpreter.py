@@ -3,9 +3,10 @@ from Utils import send_msg_to_usr
 from ChatGPT import Dalle, ChatGPT
 import discord
 import asyncio
-from Utils import send_file_to_usr, find_text_between_markers, delete_file, read_pdf, debug_log, send_img_to_usr
+from Utils import send_file_to_usr, find_text_between_markers, delete_file, debug_log, send_img_to_usr, read_pdf_from_memory
 from VectorDB import VectorDB
 import requests
+from Message import Message, MyCustomException
 
 class CommandInterpreter:
     '''
@@ -28,6 +29,7 @@ class CommandInterpreter:
         # VectorDB for RAG
         self.enableRAG = enableRAG
         if self.enableRAG:
+            if debug: debug_log("CommandInterpreter: RAG is enabled.")
             self.gpt_interpreter = gpt_interpreter
             chroma_data_path = "chroma_data/"
             embed_model = "all-MiniLM-L6-v2"
@@ -36,7 +38,7 @@ class CommandInterpreter:
         else:
             if debug: debug_log("CommandInterpreter: RAG is not enabled.")
 
-    async def main(self, msg : discord.message.Message, command : str) -> None:
+    async def main(self, msg : Message, command : str) -> None:
         '''
         tries to map the usr_msg to a functionality
         at this point, chatgpt should've interpretted any user command into one of these formats
@@ -58,7 +60,7 @@ class CommandInterpreter:
                 elif unit == "d":
                     remind_time = time * 86400
                 else:
-                    await msg.channel.send("only time units implemented: s, m, h, d")
+                    await send_msg_to_usr(msg, "only time units implemented: s, m, h, d")
                     return
 
                 await send_msg_to_usr(msg, f"Reminder set for '{task}' in {time} {unit}.")
@@ -86,26 +88,16 @@ class CommandInterpreter:
                 return error
 
         ### Vector DB
+        # user uploads a pdf to ingest into the vector db
         if command == "upload":
             if not self.enableRAG: return "RAG is not enabled. Upload cannot be performed."
             if msg.attachments:
-                for attachment in msg.attachments:
-                    # pdfs (grab embedded and ocr text -- use both in context)
-                    if attachment.filename.endswith('.pdf'):
-                        response = requests.get(attachment.url) # download pdf
-                        pdf_file = f"{self.tmp_dir}/tmp.pdf"
-                        with open(pdf_file, "wb") as f:
-                            f.write(response.content)
-                        embedded_text, ocr_text = read_pdf(pdf_file)
-                        delete_file(pdf_file)
-                        document = "\nPDF CONTENTS:\n" + embedded_text + "\nOCR CONTENTS:\n" + ocr_text
-                        self.vectorDB.upload(document)
-                    
-                    # text files
-                    if attachment.filename.endswith('.txt'):
-                        document = requests.get(attachment.url).text
-                        self.vectorDB.upload(document)
-
+                for pdf in msg.attachments['pdfs']:
+                    embedded_text, ocr_text = pdf.embedded_text, pdf.ocr_text
+                    document = "\nPDF CONTENTS:\n" + embedded_text + "\nOCR CONTENTS:\n" + ocr_text
+                    self.vectorDB.upload(document)
+                for text in msg.attachments['texts']:
+                    self.vectorDB.upload(text)
             return "Upload complete."
 
         if command[:5] == "query":

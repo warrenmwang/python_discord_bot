@@ -1,3 +1,4 @@
+from __future__ import annotations
 import discord
 import subprocess
 import re
@@ -10,7 +11,6 @@ import datetime
 from typing import Callable, Any
 import asyncio
 
-# CONSTANTS
 DISCORD_MSGLEN_CAP=2000
 
 def debug_log(s: str)->None:
@@ -39,28 +39,30 @@ def run_bash(command : str) -> tuple[str,str]:
     except Exception as e:
         return "", str(e)
 
-async def send_msg_to_usr(msg : discord.message.Message, usr_msg : str) -> None: 
+async def send_msg_to_usr(msg : Message, usr_msg : str) -> None: 
     '''
     in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
     the damn message (whether it be one or multiple messages)
     '''
     if not isinstance(usr_msg, str): return # do nothing if input is not a string
 
+    discordMsg = msg.discordMsg
     diff = len(usr_msg)
     start = 0
     end = DISCORD_MSGLEN_CAP
     while diff > 0:
-        await msg.channel.send(usr_msg[start:end])
+        await discordMsg.channel.send(usr_msg[start:end])
         start = end
         end += DISCORD_MSGLEN_CAP
         diff -= DISCORD_MSGLEN_CAP
 
-async def send_img_to_usr(msg : discord.message.Message, image : Image) -> None:
+async def send_img_to_usr(msg : Message, image : Image) -> None:
     '''send the image as bytes '''
+    discordMsg = msg.discordMsg
     with io.BytesIO() as image_binary:
         image.save(image_binary, format='PNG')
         image_binary.seek(0)
-        await msg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
+        await discordMsg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
 
 # TODO: i am going to have to depreciate this function and send any files as bytes in memory to the user
 # rather than introducing a file system dependency
@@ -151,4 +153,4 @@ async def runTryExcept(foo : Callable, **kwargs) -> Any:
         else:
             return foo(**kwargs)
     except Exception as e:
-        return str(e)
+        return f'Encountered Error: {str(e)}'
