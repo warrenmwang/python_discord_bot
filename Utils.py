@@ -101,6 +101,26 @@ def delete_file(filepath:str)->None:
     if os.path.exists(filepath):
         os.remove(filepath)
 
+def read_pdf_from_memory(pdf_bytes: bytes) -> tuple[str, str]:
+    '''Reads the PDF from bytes and returns both the embedded text and the OCR'd text separately'''
+    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+    all_embedded_text = ""
+    all_ocr_text = ""
+    for page in pdf_doc:
+        # Embedded text
+        embedded_text = page.get_text()
+        all_embedded_text += embedded_text
+
+        # OCR
+        pix = page.get_pixmap()
+        img = Image.open(io.BytesIO(pix.tobytes()))
+        ocr_text = pytesseract.image_to_string(img)
+        all_ocr_text += ocr_text
+
+    return all_embedded_text, all_ocr_text
+
+# TODO: delete this function, once replaced all occurences with the new one.
 def read_pdf(file_path: str)->tuple[str,str]:
     '''Reads the pdf at the given file path and returns both the embedded text and the OCR'd text seperately'''
     pdf_doc = fitz.open(file_path)
@@ -121,7 +141,7 @@ def read_pdf(file_path: str)->tuple[str,str]:
     return all_embedded_text, all_ocr_text
 
 async def runTryExcept(foo : Callable, **kwargs) -> Any:
-    # given a function and the input paarms, 
+    # given a function and the input params, 
     # run the function with the given inputs params into it
     # and return the error message as a string if there is one
     # otherwise, return whatever the function returns

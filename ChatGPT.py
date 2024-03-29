@@ -1,14 +1,13 @@
 from openai import OpenAI
 import os
-import discord
 import pickle
 import asyncio
-import requests
 from concurrent.futures import ThreadPoolExecutor
-from Utils import constructHelpMsg, read_pdf, delete_file, debug_log
+from Utils import constructHelpMsg, debug_log
 import time
 from PIL import Image
 import io, base64
+from Message import Message
 
 class Dalle:
     def __init__(self, debug:bool):
@@ -45,7 +44,6 @@ class Dalle:
 class ChatGPT:
     def __init__(self, debug:bool):
         self.DEBUG = debug
-        self.tmp_dir = "./tmp"
 
         self.client = OpenAI()
         self.gpt_channel_name = os.getenv('GPT_CHANNEL_NAME')
@@ -160,7 +158,7 @@ class ChatGPT:
         if self.DEBUG: debug_log(f"Got response from ChatGPT API: {chatgptcompletion}")
         return chatgptcompletion
 
-    async def genGPTResponseWithAttachments(self, msg : discord.message.Message, settings_dict: dict = None) -> str:
+    async def genGPTResponseWithAttachments(self, msg : Message, settings_dict: dict = None) -> str:
         '''
         retrieves a GPT response given a string input and a dictionary containing the settings to use
         checks for attachments in the discord Message construct
@@ -179,37 +177,16 @@ class ChatGPT:
         ]
 
         # attachments 
-        text_file_formats = ['.txt', '.c', '.cpp', '.py', '.ipynb', '.java', '.js', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md']
-        image_file_formats = ['.jpg', '.png', '.heic']
-        if msg.attachments:
-            for attachment in msg.attachments:
-                # text files (plain text and code)
-                for file_format in text_file_formats:
-                    if attachment.filename.endswith(file_format):
-                        # Download the attachment
-                        file_content = requests.get(attachment.url).text
-                        # append to text data to be sent
-                        content[0]['text'] = content[0]['text'] + "\nFILE CONTENTS:\n" + file_content
-
-                # images (allow .jpg, .png, .heic)
-                for image_format in image_file_formats:
-                    if attachment.filename.endswith(image_format):
-                        if settings_dict["model"][0] == "gpt-4-vision-preview":
-                            image_dict = {"type": "image_url"}
-                            image_dict["image_url"] = attachment.url
-                            content.append(image_dict)
-                        else:
-                            response_msg += f"Discarded image (current model is not an image model): {attachment.filename}\n"
-                
-                # pdfs (grab embedded and ocr text -- use both in context)
-                if attachment.filename.endswith('.pdf'):
-                    response = requests.get(attachment.url) # download pdf
-                    pdf_file = f"{self.tmp_dir}/tmp.pdf"
-                    with open(pdf_file, "wb") as f:
-                        f.write(response.content)
-                    embedded_text, ocr_text = read_pdf(pdf_file)
-                    delete_file(pdf_file)
-                    content[0]['text'] = content[0]['text'] + "\nPDF CONTENTS:\n" + embedded_text + "\nOCR CONTENTS:\n" + ocr_text
+        if msg.attachments is not None:
+            for text in msg.attachments['texts']:
+                content[0]['text'] = content[0]['text'] + "\nFILE CONTENTS:\n" + text
+            for imageB64str in msg.attachments['images']:
+                image_dict = {"type": "image_url"}
+                image_dict["image_url"] = {"url" : f"data:image/jpeg;base64,{imageB64str}"}
+                content.append(image_dict)
+            for pdf in msg.attachments['pdfs']:
+                embedded_text, ocr_text = pdf.embedded_text, pdf.ocr_text
+                content[0]['text'] = content[0]['text'] + "\nPDF CONTENTS:\n" + embedded_text + "\nOCR CONTENTS:\n" + ocr_text
 
         new_usr_msg = {
             "role": "user",
@@ -267,19 +244,19 @@ class ChatGPT:
         return gpt_response
 
     ################# Entrance #################
-    async def main(self, msg : discord.message.Message) -> str:
+    async def main(self, msg : Message) -> str:
         '''
         Entrance function for all ChatGPT API things.
         Either modifies the parameters or generates a response based off of current context and new user message.
         Returns the generation.
         '''
-        usr_msg = str(msg.content)
+        usr_msg = msg.content
         if len(usr_msg) > 0:
             # catch if is a command
             if usr_msg[0] == self.cmd_prefix:
                 if len(usr_msg) == 1: return "Empty command provided."
                 # pass to PA block without the prefix
-                return await self.modifyParams(msg, usr_msg[1:])
+                return await self.modifyParams(usr_msg[1:])
 
         # check to see if we are running out of tokens for current msg log
         # get the current thread length
@@ -392,7 +369,7 @@ class ChatGPT:
             self.modify_prompts_state_tmp = None
             return  f"Changed '{prompt_name}' to '{new_prompt_name}'"
 
-    async def modifyParams(self, msg : discord.message.Message, usr_msg : str) -> str:
+    async def modifyParams(self, usr_msg : str) -> str:
         '''
         Modifies ChatGPT API params.
         Returns the output of an executed command or returns an error/help message.
@@ -487,9 +464,9 @@ class ChatGPT:
             curr_model = self.gpt_settings["model"][0]
             if self.DEBUG: debug_log(f"swap: {curr_model=}")
             if curr_model == "gpt-4-vision-preview":
-                await self.modifygptset(msg, "gptset model gpt-4-0125-preview")
+                await self.modifygptset("gptset model gpt-4-0125-preview")
             else:
-                await self.modifygptset(msg, "gptset model gpt-4-vision-preview")
+                await self.modifygptset("gptset model gpt-4-vision-preview")
             return f'Set to: {self.gpt_settings["model"][0]}'
 
         # add a command to add a new prompt to the list of prompts and save to file
@@ -521,7 +498,7 @@ class ChatGPT:
 
         # user wants to modify gpt settings
         if usr_msg[0:6] == "gptset":
-            await self.modifygptset(msg, usr_msg)
+            await self.modifygptset(usr_msg)
             return self.gptsettings()
         
         # show the current thread
@@ -575,7 +552,7 @@ class ChatGPT:
         return f"len:{tmp} | tokens: ~{tmp/4}"
     
     # changing gptsettings
-    async def modifygptset(self, msg : discord.message.Message, usr_msg : str) -> None:
+    async def modifygptset(self, usr_msg : str) -> None:
         ''' 
         Executes both gptset and gptsettings (to print out the new gpt api params for the next call)
         expect format: gptset [setting_name] [new_value]

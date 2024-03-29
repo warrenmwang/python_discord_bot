@@ -8,6 +8,7 @@ from PersonalAssistant import PersonalAssistant
 import argparse
 from Utils import send_msg_to_usr, debug_log, runTryExcept
 import uuid
+from Message import Message
 
 class Main:
     def __init__(self, args : argparse.Namespace):
@@ -65,9 +66,12 @@ class Main:
             if msg.author == self.client.user:
                 return 
             
+            myMsg = Message()
+            myMsg.importFromDiscord(msg)
+            
             ############################## ChatGPT API ##############################
             if channel == self.chatgpt_channel:
-                chatgptresp = await runTryExcept(self.ChatGPT.main, msg=msg)
+                chatgptresp = await runTryExcept(self.ChatGPT.main, msg=myMsg)
                 return await send_msg_to_usr(msg, chatgptresp)
 
             ############################## Personal Assistant Channel ##############################

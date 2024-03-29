@@ -6,6 +6,6 @@ pickled_threads/
 runme.sh
 .dockerignore
 cron_start.sh
-testing/
 chroma_data/
 prompts.txt
+todo.txt

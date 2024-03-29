@@ -47,6 +47,9 @@
         - Help: [video](https://www.youtube.com/watch?v=hoDLj0IzZMU) 
     - Get OpenAI API Key
       - You'll need to create an account with [OpenAI](https://openai.com/) and create an API key, put that in the `.env` file.
+    - If you want to pass PDFs into the bot, you will need to have the `tesseract` binary
+    in your path. Instructions can be found [here](https://pypi.org/project/pytesseract/)
+
 2. Clone/fork this repo
 3. `cd` into the repo
 4. Python Environment Setup:
@@ -62,6 +65,13 @@
     > I use Automatic1111's `stable-diffusion-webui` repo, so `webui.sh` is the entrypoint that I run to start the stable diffusion server api server. It looks like their script clones the repo again inside of itself, which I find odd, but it will still work nonetheless and you'll need to place your model checkpoints inside the `models` folder in the nested cloned repo. The `webui.sh` script will automatically download a stable diffusion `v1.5-pruned-emaonly.safetensors` model weights file to get you started if you don't have your own weights.
     <br>
     I assume the submodule will just work. If it doesn't just clone the repo from here: [https://github.com/AUTOMATIC1111/stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
+
+## Unit Tests
+
+To run unit tests
+```
+python -m unittest discover -v -s ./tests
+```
 
 ## Future Plans
 - add more commands for vector db to "converse with your personal docs"

@@ -6,7 +6,6 @@ import asyncio
 from Utils import send_file_to_usr, find_text_between_markers, delete_file, read_pdf, debug_log, send_img_to_usr
 from VectorDB import VectorDB
 import requests
-import io
 
 class CommandInterpreter:
     '''
