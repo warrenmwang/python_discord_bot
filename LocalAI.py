@@ -3,10 +3,11 @@ import discord
 import requests
 from PIL import Image
 import io, base64
-from Utils import run_bash, send_msg_to_usr, send_file_to_usr, constructHelpMsg, debug_log
+from Utils import run_bash, send_msg_to_usr, constructHelpMsg, debug_log, send_img_to_usr
 import argparse
 import time
 
+# TODO: this is outdated now
 class StableDiffusion:
     def __init__(self, debug:bool):
         self.DEBUG = debug
@@ -278,8 +279,7 @@ class StableDiffusion:
 
         for i in r['images']:
             image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
-            image.save(self.stable_diffusion_output_dir)
-            await send_file_to_usr(msg, self.stable_diffusion_output_dir)
+            await send_img_to_usr(msg, image)
 
     def start_server(self):
         '''

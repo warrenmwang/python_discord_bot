@@ -31,6 +31,7 @@ def debug_log(s: str)->None:
     print(f"{debug_message}{' ' * spaces_needed}{timestamp}")
 
 def run_bash(command : str) -> tuple[str,str]:
+    '''what could possibly go wrong with running shell scripts?'''
     try:
         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout = result.stdout
@@ -64,11 +65,14 @@ async def send_img_to_usr(msg : Message, image : Image) -> None:
         image_binary.seek(0)
         await discordMsg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
 
-# TODO: i am going to have to depreciate this function and send any files as bytes in memory to the user
-# rather than introducing a file system dependency
-async def send_file_to_usr(msg : discord.message.Message, filePath : str) -> None:
-    '''given the image path in the filesystem, send it to the author of the msg'''
-    await msg.channel.send(file=discord.File(filePath))
+async def send_as_file_attachment_to_usr(msg:Message, fileBytes:bytes, filename:str, fileExtension:str):
+    '''
+    Send as an file attachment the contents of fileBytes with name filename.fileExtension
+    '''
+    discordMsg = msg.discordMsg
+    completeFilename = f"{filename}.{fileExtension}"
+    fileToSend = discord.File(fp=io.BytesIO(fileBytes), filename=completeFilename)
+    await discordMsg.channel.send(file=fileToSend)
 
 def constructHelpMsg(d : dict)->str:
     '''Stringify the dictionary of commands and their descriptions'''
@@ -98,11 +102,6 @@ def find_text_between_markers(text:str, start_marker:str="<START>", end_marker:s
     matches = re.findall(pattern, text, re.DOTALL)
     return matches
 
-def delete_file(filepath:str)->None:
-    '''Delete the file at the given filepath if it exists'''
-    if os.path.exists(filepath):
-        os.remove(filepath)
-
 def read_pdf_from_memory(pdf_bytes: bytes) -> tuple[str, str]:
     '''Reads the PDF from bytes and returns both the embedded text and the OCR'd text separately'''
     pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -115,26 +114,6 @@ def read_pdf_from_memory(pdf_bytes: bytes) -> tuple[str, str]:
         all_embedded_text += embedded_text
 
         # OCR
-        pix = page.get_pixmap()
-        img = Image.open(io.BytesIO(pix.tobytes()))
-        ocr_text = pytesseract.image_to_string(img)
-        all_ocr_text += ocr_text
-
-    return all_embedded_text, all_ocr_text
-
-# TODO: delete this function, once replaced all occurences with the new one.
-def read_pdf(file_path: str)->tuple[str,str]:
-    '''Reads the pdf at the given file path and returns both the embedded text and the OCR'd text seperately'''
-    pdf_doc = fitz.open(file_path)
-
-    all_embedded_text = ""
-    all_ocr_text = ""
-    for i in range(len(pdf_doc)):
-        page = pdf_doc[i]
-        # embedded text
-        embedded_text = page.get_text()
-        all_embedded_text += embedded_text
-        # ocr
         pix = page.get_pixmap()
         img = Image.open(io.BytesIO(pix.tobytes()))
         ocr_text = pytesseract.image_to_string(img)

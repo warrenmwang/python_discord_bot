@@ -3,7 +3,7 @@ from Utils import send_msg_to_usr
 from ChatGPT import Dalle, ChatGPT
 import discord
 import asyncio
-from Utils import send_file_to_usr, find_text_between_markers, delete_file, debug_log, send_img_to_usr, read_pdf_from_memory
+from Utils import find_text_between_markers, debug_log, send_img_to_usr, send_as_file_attachment_to_usr
 from VectorDB import VectorDB
 import requests
 from Message import Message, MyCustomException
@@ -19,9 +19,6 @@ class CommandInterpreter:
         '''
         self.DEBUG = debug
         self.help_str = help_str
-        self.tmp_dir = "./tmp"
-        if not os.path.exists(self.tmp_dir):
-            os.makedirs(self.tmp_dir)
 
         # Dalle
         self.dalle = Dalle(debug)
@@ -119,13 +116,10 @@ class CommandInterpreter:
     
         if command[0:15] == '_attachTextFile':
             # attaches text file(s) for the contents in between the markers <CODESTART> and <CODEEND>
-            codeFilePath = "/tmp/discord_code_tmp.txt"
             code = find_text_between_markers(command, start_marker="<CODESTART>", end_marker="<CODEEND>")
-            for c in code:
-                with open(codeFilePath, "w") as file:
-                    file.write(c)
-                await send_file_to_usr(msg, codeFilePath)
-            delete_file(codeFilePath)
+            fileBytes = "".join(code).encode()
+            await send_as_file_attachment_to_usr(msg, fileBytes, 'code', '.txt')
+
             # returns any commentary denoted by <COMMENTSTART> and <COMMENTEND>
             comment = find_text_between_markers(command, start_marker="<COMMENTSTART>", end_marker="<COMMENTEND>")
             return "\n".join(comment)+"End of Request."

@@ -82,11 +82,16 @@ class Main:
                 return await send_msg_to_usr(myMsg, paresp)
 
             ############################## Stable Diffusion ##############################
-            if channel == self.stable_diffusion_channel:
-                if self.stable_diffusion_enabled:
-                    return await self.StableDiffusion.main(myMsg)
-                else:
-                    return await send_msg_to_usr(myMsg, "Stable Diffusion is not enabled.")            
+            # TODO: commenting out stable diffusion channel because it's outdated now.
+            # what i should do is actually grab the relevant code segments from a stable diffusion
+            # repo and put it here, instead of introducing an unnecessary dependency of using someone
+            # else's entire repo.
+
+            # if channel == self.stable_diffusion_channel:
+            #     if self.stable_diffusion_enabled:
+            #         return await self.StableDiffusion.main(myMsg)
+            #     else:
+            #         return await send_msg_to_usr(myMsg, "Stable Diffusion is not enabled.")            
 
         self.client.run(self.TOKEN)
 
