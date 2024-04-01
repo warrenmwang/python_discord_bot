@@ -11,13 +11,10 @@ import time
 class StableDiffusion:
     def __init__(self, debug:bool):
         self.DEBUG = debug
-        self.tmp_dir = "./tmp"
-
         self.server_url = "http://127.0.0.1:7861"
         self.tmux_session_name = "sd_api"
         self.stable_diffusion_channel = os.getenv('STABLE_DIFFUSION_CHANNEL')
         assert self.stable_diffusion_channel != '', "STABLE_DIFFUSION_CHANNEL environment variable not set."
-        self.stable_diffusion_output_dir = f"{self.tmp_dir}/stable_diffusion_output.png"
         self.stable_diffusion_toggle = False
         self.models = {
             '14': 'sd-v1-4.ckpt',

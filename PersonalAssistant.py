@@ -9,7 +9,7 @@ class PersonalAssistant:
     '''
     Personal assistant, interprets hard-coded and arbitrary user commands/messages
     '''
-    def __init__(self, debug:bool, enableRAG:bool):
+    def __init__(self, debug:bool=False, enableRAG:bool=False):
         self.DEBUG = debug
         self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
         assert self.personal_assistant_channel != '', "PERSONAL_ASSISTANT_CHANNEL environment variable not set."

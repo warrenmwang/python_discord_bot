@@ -15,7 +15,7 @@ sys.path.append('..')
 import requests
 import base64
 from Utils import read_pdf_from_memory
-
+# from typing import Any
 
 class MyCustomException(Exception):
     def __init__(self, message):
@@ -36,9 +36,14 @@ class Message:
         1. texts: str
         2. images: base64 encoded str
         3. pdfs: MyPDF Class Objects
+
+    Methods whose name begins with _test are used for unit testing
     '''
     def __init__(self):
-        pass
+        self.content = None
+        self.author = None
+        self.discordMsg = None
+        self.attachments = None
 
     def importFromDiscord(self, msg : discord.message.Message) -> None:
         '''Imports the parts of the discord message that I actually use.'''
@@ -90,3 +95,8 @@ class Message:
                     mypdf = MyPDF(attachment.url, embedded_text, ocr_text, response.content) 
                     self.attachments['pdfs'].append(mypdf)
         
+    # def _test_createAttachment(self, type:str, content:Any):
+    #     '''
+    #     Create an attachment 
+    #     '''
+    #     self.attachments

@@ -42,7 +42,7 @@ class Dalle:
 
 
 class ChatGPT:
-    def __init__(self, debug:bool):
+    def __init__(self, debug:bool = False):
         self.DEBUG = debug
 
         self.client = OpenAI()
@@ -107,8 +107,7 @@ class ChatGPT:
 
         # initialize prompts
         self.gpt_read_prompts_from_file() # read the prompts from disk
-        self.init_prompt_name = "empty" # Default to an empty prompt, if not present in user's prompts list, append it
-        self.gpt_context_reset(prompt_name=self.init_prompt_name)
+        self.init_empty_prompt()
     
     async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict = None) -> str:
         '''
@@ -237,9 +236,8 @@ class ChatGPT:
         # use usr_msg to generate new response from API
         gpt_response = await self.genGPTResponseNoAttachments(prompt)
 
-        # reformat to put into messages list for future context, and save
-        formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
-        self.gpt_settings["messages"][0].append(formatted_response)
+        # add gpt response to current thread
+        self.add_msg_to_curr_thread(self.chatgpt_name, gpt_response)
 
         return gpt_response
 
@@ -269,9 +267,8 @@ class ChatGPT:
         # use usr_msg to generate new response from API
         gpt_response = await self.genGPTResponseWithAttachments(msg)
 
-        # reformat to put into messages list for future context, and save
-        formatted_response = {"role":self.chatgpt_name, "content":gpt_response}
-        self.gpt_settings["messages"][0].append(formatted_response)
+        # add gpt response to current thread
+        self.add_msg_to_curr_thread(self.chatgpt_name, gpt_response)
 
         return gpt_response
         
@@ -587,10 +584,9 @@ class ChatGPT:
         self.all_gpt_available_prompts = [] # prompt names
         self.map_promptname_to_prompt = {} # prompt name -> prompt
 
-        # create the prompts file if it doesn't exist
+        # quit if prompt file doesn't exist
         if not os.path.exists(self.gpt_prompts_file):
-            with open(self.gpt_prompts_file, "w") as f:
-                pass
+            return
 
         # load in all the prompts
         with open(self.gpt_prompts_file, "r") as f:
@@ -604,10 +600,16 @@ class ChatGPT:
                 self.map_promptname_to_prompt[prompt_name] = prompt
                 self.all_gpt_available_prompts.append(prompt_name)
             
-            # add empty prompt if not present
-            if 'empty' not in self.all_gpt_available_prompts:
-                self.map_promptname_to_prompt['empty'] = ''
-                self.all_gpt_available_prompts.append('empty')
+    def init_empty_prompt(self) -> None:
+        '''inits an empty prompt for the message thread, if not present in prompts listing'''
+        # add empty prompt if not present
+        if 'empty' not in self.all_gpt_available_prompts:
+            self.map_promptname_to_prompt['empty'] = ''
+            self.all_gpt_available_prompts.append('empty')
+        
+        # initialize thread with empty system/assistant prompt
+        self.init_prompt_name = "empty" # Default to an empty prompt, if not present in user's prompts list, append it
+        self.gpt_context_reset(prompt_name=self.init_prompt_name)
 
     def gpt_context_reset(self, prompt_name : str = None) -> None:
         '''
@@ -620,7 +622,7 @@ class ChatGPT:
             self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
 
         self.gpt_settings["messages"][0] = [] # reset messages, should be gc'd
-        self.gpt_settings["messages"][0].append({"role":self.chatgpt_name, "content":self.curr_prompt_str})
+        self.add_msg_to_curr_thread(self.chatgpt_name, self.curr_prompt_str)
     
     async def get_curr_gpt_thread(self) -> str:
         '''
@@ -656,8 +658,9 @@ class ChatGPT:
 
         # if setting a new model, update the max_tokens
         if setting == "model":
-            x = self.gpt_models_info[new_val] # (max_tokens, date of latest date)
+            x = self.gpt_models_info[new_val] # (max return tokens, date of latest date)
             self.gpt_settings["max_tokens"][0] = x[0]
+            self.gpt_settings["knowledge_cutoff"][0] = x[2]
 
     def get_all_gpt_prompts_as_str(self):
         '''
@@ -665,3 +668,8 @@ class ChatGPT:
         '''
         return "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
 
+    def add_msg_to_curr_thread(self, role:str, content:str):
+        '''
+        Add the new message, formatted for openai's GPT API, to the current context thread.
+        '''
+        self.gpt_settings["messages"][0].append({"role": role, "content": content})
