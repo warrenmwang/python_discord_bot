@@ -18,7 +18,6 @@ class PersonalAssistant:
         self.personal_assistant_modify_prompts_buff = []
         self.personal_assistant_commands = {
             "help": "show this message",
-            # "pa_llama": "toggle the use of a llama model to interpret an unknown command (huge WIP)",
             "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
             'draw': "format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3",
             'upload': '(vector db) upload a text document (.pdf or .txt) to be stored into the Vector DB',

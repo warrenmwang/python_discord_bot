@@ -1,6 +1,5 @@
 from __future__ import annotations
 import discord
-import subprocess
 import re
 import os
 import fitz # PyMuPDF
@@ -29,16 +28,6 @@ def debug_log(s: str)->None:
     
     # Print the debug message with the timestamp aligned to the right
     print(f"{debug_message}{' ' * spaces_needed}{timestamp}")
-
-def run_bash(command : str) -> tuple[str,str]:
-    '''what could possibly go wrong with running shell scripts?'''
-    try:
-        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout = result.stdout
-        stderr = result.stderr
-        return stdout, stderr
-    except Exception as e:
-        return "", str(e)
 
 async def send_msg_to_usr(msg : Message, usr_msg : str) -> None: 
     '''

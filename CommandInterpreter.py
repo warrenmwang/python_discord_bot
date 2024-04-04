@@ -104,7 +104,6 @@ class CommandInterpreter:
             db_context = self.vectorDB.query(db_query_prompt)[0]
             if self.DEBUG: debug_log(f"Vector db retrieved: {db_context}")
 
-            # TODO: how much of the context should be provided (consider if document is a 20 page paper...)
             # pass to gpt
             prompt = f"ORIGINAL USER QUERY:{command[6:]}\nVECTOR DB CONTEXT:{db_context}\nRESPONSE:"
             gpt_response = await self.gpt_interpreter.mainNoAttachments(prompt)

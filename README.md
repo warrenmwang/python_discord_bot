@@ -1,5 +1,4 @@
-# AI-Powered Discord ChatBot
-"One bot to rule them all" kind of feel.
+# ChatGPT Discord Bot 
 
 ## What does this do?
 - Discord chat interface for ChatGPT API models (e.g. gpt-4-1106-preview, gpt-4-vision-preview, dalle3, etc.) from OpenAI
@@ -72,11 +71,3 @@ To run unit tests
 ```
 python -m unittest discover -v -s ./tests
 ```
-
-## Future Plans
-- add more commands for vector db to "converse with your personal docs"
-  > NOTE: Remember that LLM's are prone to make things up and mix and match stuff and present it to you confidently as their truth, when in reality it could just be bs'ing you. Take caution with what you use this or any LLM-assisted application. You should always be weary of their hallucinations.
-- make stable diffusion bot more user friendly (hah)
-- add more commands to CommandInterpreter
-- provide option to use local LLMs
-  > NOTE: low priority since I and many people just don't have the hardware to run any actual decent LLM
