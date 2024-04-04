@@ -3,7 +3,7 @@ __pycache__*
 private/
 tmp/
 pickled_threads/
-runme.sh
+run.sh
 .dockerignore
 cron_start.sh
 chroma_data/

@@ -1,12 +1,9 @@
-import os
 from Utils import send_msg_to_usr
 from ChatGPT import Dalle, ChatGPT
-import discord
 import asyncio
 from Utils import find_text_between_markers, debug_log, send_img_to_usr, send_as_file_attachment_to_usr
 from VectorDB import VectorDB
-import requests
-from Message import Message, MyCustomException
+from Message import Message
 
 class CommandInterpreter:
     '''

@@ -95,8 +95,3 @@ class Message:
                     mypdf = MyPDF(attachment.url, embedded_text, ocr_text, response.content) 
                     self.attachments['pdfs'].append(mypdf)
         
-    # def _test_createAttachment(self, type:str, content:Any):
-    #     '''
-    #     Create an attachment 
-    #     '''
-    #     self.attachments

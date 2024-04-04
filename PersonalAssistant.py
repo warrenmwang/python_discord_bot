@@ -1,4 +1,3 @@
-import discord
 import os
 from ChatGPT import ChatGPT
 from CommandInterpreter import CommandInterpreter
