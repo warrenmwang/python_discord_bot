@@ -178,14 +178,14 @@ class ChatGPT:
         # attachments 
         if msg.attachments is not None:
             for text in msg.attachments['texts']:
-                content[0]['text'] = content[0]['text'] + "\nFILE CONTENTS:\n" + text
+                content[0]['text'] = content[0]['text'] + "\n<FILECONTENTSTART>:\n" + text + "\n<FILECONTENTEND>"
             for imageB64str in msg.attachments['images']:
                 image_dict = {"type": "image_url"}
                 image_dict["image_url"] = {"url" : f"data:image/jpeg;base64,{imageB64str}"}
                 content.append(image_dict)
             for pdf in msg.attachments['pdfs']:
                 embedded_text, ocr_text = pdf.embedded_text, pdf.ocr_text
-                content[0]['text'] = content[0]['text'] + "\nPDF CONTENTS:\n" + embedded_text + "\nOCR CONTENTS:\n" + ocr_text
+                content[0]['text'] = content[0]['text'] + "\n<PDFCONTENTSTART>" + "\nEMBEDDED TEXT:\n" + embedded_text + "\nOCR TEXT:\n" + ocr_text + "\n<PDFCONTENTEND>"
 
         new_usr_msg = {
             "role": "user",
@@ -220,59 +220,6 @@ class ChatGPT:
         response_msg += chatgptcompletion
         if self.DEBUG: debug_log(f"Got response from ChatGPT API: {chatgptcompletion}")
         return response_msg
-
-    async def mainNoAttachments(self, prompt : str) -> str:
-        '''
-        Alternative entrance function for only plain text inputs...
-        '''
-        # check to see if we are running out of tokens for current msg log
-        # get the current thread length
-        curr_thread = await self.get_curr_gpt_thread()
-        curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
-        while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
-            # remove the 2nd oldest message from the thread (first oldest is the prompt)
-            self.gpt_settings["messages"][0].pop(1)
-        
-        # use usr_msg to generate new response from API
-        gpt_response = await self.genGPTResponseNoAttachments(prompt)
-
-        # add gpt response to current thread
-        self.add_msg_to_curr_thread(self.chatgpt_name, gpt_response)
-
-        return gpt_response
-
-    ################# Entrance #################
-    async def main(self, msg : Message) -> str:
-        '''
-        Entrance function for all ChatGPT API things.
-        Either modifies the parameters or generates a response based off of current context and new user message.
-        Returns the generation.
-        '''
-        usr_msg = msg.content
-        if len(usr_msg) > 0:
-            # catch if is a command
-            if usr_msg[0] == self.cmd_prefix:
-                if len(usr_msg) == 1: return "Empty command provided."
-                # pass to PA block without the prefix
-                return await self.modifyParams(usr_msg[1:])
-
-        # check to see if we are running out of tokens for current msg log
-        # get the current thread length
-        curr_thread = await self.get_curr_gpt_thread()
-        curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
-        while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
-            # remove the 2nd oldest message from the thread (first oldest is the prompt)
-            self.gpt_settings["messages"][0].pop(1)
-        
-        # use usr_msg to generate new response from API
-        gpt_response = await self.genGPTResponseWithAttachments(msg)
-
-        # add gpt response to current thread
-        self.add_msg_to_curr_thread(self.chatgpt_name, gpt_response)
-
-        return gpt_response
-        
-    ################# Entrance #################
 
     def _setPrompt(self, prompt : str) -> None:
         '''
@@ -500,12 +447,7 @@ class ChatGPT:
         
         # show the current thread
         if usr_msg == "show thread":
-            ret_str = ""
-            for tmp in self.gpt_settings["messages"][0]:
-                tmp_role = tmp["role"]
-                tmp_msg = tmp["content"]
-                ret_str += f"###{tmp_role.capitalize()}###\n{tmp_msg}\n###################\n"
-            return ret_str
+            return await self.get_curr_gpt_thread()
 
         # reset the current convo with the curr prompt context
         if usr_msg == "reset thread":
@@ -540,15 +482,14 @@ class ChatGPT:
         # not a shortcut command
         return usr_msg
 
-    # convo len
     async def get_curr_convo_len_and_approx_tokens(self) -> str:
         '''
-        returns a string of the current length of the conversation and the approximate number of tokens
+        Returns a string of the current length of the conversation and the approximate number of tokens
+        as a single string
         '''
         tmp = len(await self.get_curr_gpt_thread())
         return f"len:{tmp} | tokens: ~{tmp/4}"
     
-    # changing gptsettings
     async def modifygptset(self, usr_msg : str) -> None:
         ''' 
         Executes both gptset and gptsettings (to print out the new gpt api params for the next call)
@@ -621,16 +562,36 @@ class ChatGPT:
             self.curr_prompt_name = prompt_name
             self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
 
-        self.gpt_settings["messages"][0] = [] # reset messages, should be gc'd
+        self.gpt_settings["messages"][0] = [] # reset messages, old messages should be gc'd
         self.add_msg_to_curr_thread(self.chatgpt_name, self.curr_prompt_str)
     
     async def get_curr_gpt_thread(self) -> str:
         '''
-        generates the current gpt conversation thread from the gptsettings messages list
+        Generates the current gpt conversation thread as a string from the gptsettings messages list
+        Notably, we know that images and pdf representations are in their raw string form (base64 encoded str for images,
+        embedded text and ocr text for pdfs). Therefore, we shorten those to just [image] and [pdf] respectively.
         '''
         ret_str = ""
-        for msg in self.gpt_settings["messages"][0]:
-            ret_str += f"{msg['role']}: {msg['content']}\n" 
+        messages = self.gpt_settings["messages"][0]
+
+        if self.DEBUG: debug_log(f"get_curr_gpt_thread: {messages=}")
+
+        for msg in messages:
+            content = msg["content"]
+
+            if len(content) == 0:
+                continue # skip empty messages
+
+            currMsgTxt = f'{msg["role"]}: \n'
+            for c in content:
+                type = c["type"]
+                if type == "text":
+                    currMsgTxt += f'{c["text"]}\n'
+                elif type == "image_url":
+                    currMsgTxt += f'[image]\n'
+                elif type == "pdf":
+                    currMsgTxt += f'[pdf]\n'
+            ret_str += currMsgTxt
         return ret_str
 
     def gptsettings(self) -> str:
@@ -662,14 +623,65 @@ class ChatGPT:
             self.gpt_settings["max_tokens"][0] = x[0]
             self.gpt_settings["knowledge_cutoff"][0] = x[2]
 
-    def get_all_gpt_prompts_as_str(self):
+    def get_all_gpt_prompts_as_str(self) -> str:
         '''
         constructs the string representing each [prompt_name, prompt] as one long string and return it
         '''
         return "".join([f"Name: {k}\nPrompt:{v}\n----\n" for k,v in self.map_promptname_to_prompt.items()])
 
-    def add_msg_to_curr_thread(self, role:str, content:str):
+    def add_msg_to_curr_thread(self, role:str, content:str) -> None:
         '''
         Add the new message, formatted for openai's GPT API, to the current context thread.
         '''
-        self.gpt_settings["messages"][0].append({"role": role, "content": content})
+        msg = {"role": role, "content": [{"type": "text", "text": content}]}
+        self.gpt_settings["messages"][0].append(msg)
+
+    async def mainNoAttachments(self, prompt : str) -> str:
+        '''
+        Alternative entrance function for only plain text inputs...
+        '''
+        # check to see if we are running out of tokens for current msg log
+        # get the current thread length
+        curr_thread = await self.get_curr_gpt_thread()
+        curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
+        while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
+            # remove the 2nd oldest message from the thread (first oldest is the prompt)
+            self.gpt_settings["messages"][0].pop(1)
+        
+        # use usr_msg to generate new response from API
+        gpt_response = await self.genGPTResponseNoAttachments(prompt)
+
+        # add gpt response to current thread
+        self.add_msg_to_curr_thread(self.chatgpt_name, gpt_response)
+
+        return gpt_response
+
+    async def main(self, msg : Message) -> str:
+        '''
+        Entrance function for all ChatGPT API things.
+        Either modifies the parameters or generates a response based off of current context and new user message.
+        Returns the generation.
+        '''
+        usr_msg = msg.content
+        if len(usr_msg) > 0:
+            # catch if is a command
+            if usr_msg[0] == self.cmd_prefix:
+                if len(usr_msg) == 1: return "Empty command provided."
+                # pass to PA block without the prefix
+                return await self.modifyParams(usr_msg[1:])
+
+        # check to see if we are running out of tokens for current msg log
+        # get the current thread length
+        curr_thread = await self.get_curr_gpt_thread()
+        curr_thread_len_in_tokens = len(curr_thread) / 4 # 1 token ~= 4 chars
+        while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
+            # remove the 2nd oldest message from the thread (first oldest is the prompt)
+            self.gpt_settings["messages"][0].pop(1)
+        
+        # use usr_msg to generate new response from API
+        gpt_response = await self.genGPTResponseWithAttachments(msg)
+
+        # add gpt response to current thread
+        self.add_msg_to_curr_thread(self.chatgpt_name, gpt_response)
+
+        return gpt_response

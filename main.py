@@ -33,6 +33,8 @@ class Main:
         self.client = discord.Client(intents=self.intents)
         if debug: debug_log("Started Discord Client.")
 
+        self.DEBUG = debug
+
     def run(self):
         '''Main function'''
         ########################### INIT ############################
@@ -58,12 +60,20 @@ class Main:
             
             ############################## ChatGPT API ##############################
             if channel == self.chatgpt_channel:
-                chatgptresp = await runTryExcept(self.ChatGPT.main, msg=myMsg)
+                if self.DEBUG:
+                    chatgptresp = await self.ChatGPT.main(msg=myMsg)
+                else:
+                    chatgptresp = await runTryExcept(self.ChatGPT.main, msg=myMsg)
+
                 return await send_msg_to_usr(myMsg, chatgptresp)
 
             ############################## Personal Assistant Channel ##############################
             if channel == self.personal_assistant_channel:
-                paresp = await runTryExcept(self.PersonalAssistant.main, msg=myMsg)
+                if self.DEBUG:
+                    paresp = await self.PersonalAssistant.main(msg=myMsg)
+                else:
+                    paresp = await runTryExcept(self.PersonalAssistant.main, msg=myMsg)
+                
                 return await send_msg_to_usr(myMsg, paresp)
 
         self.client.run(self.TOKEN)
