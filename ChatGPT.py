@@ -78,6 +78,7 @@ class ChatGPT:
         self.all_gpt_available_prompts = [] # list of all prompt names
         self.map_promptname_to_prompt = {} # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
+        self.hotswap_models = ["gpt-4-0125-preview", "gpt-4-vision-preview"] # for now not changeable.
 
         # modifying prompts
         self.modify_prompts_state = None
@@ -93,15 +94,15 @@ class ChatGPT:
             "gptset": "format is `gptset [setting_name] [new_value]` modify gpt settings",
             "current prompt (cp)": "get the current prompt name",
             "change prompt (chp)": "format `change prompt, [new prompt name]`",
-            "show prompts": "show the available prompts for gpt",
-            "models": "list the available gpt models",
+            "list prompts (lp)": "list the available prompts for gpt",
+            "list models (lm)": "list the available gpt models",
             "modify prompts": "modify the prompts for gpt",
             "save thread": "save the current gptX thread to a file",
             "show old threads": "show the old threads that have been saved",
             "load thread": "format `load thread, [unique id]` load a gptX thread from a file",
             "delete thread": "format `delete thread, [unique id]` delete a gptX thread from a file",
             "current model (cm)": "show the current gpt model",
-            "swap": "swap between different models",
+            "swap": f"hotswap btwn models: ({self.hotswap_models})",
         }
         self.commands_help_str = constructHelpMsg(self.commands)
 
@@ -249,11 +250,15 @@ class ChatGPT:
         modify the content (prompt) to the requested prompt.
         '''
         assert promptName in self.all_gpt_available_prompts, "Requested promptName is not in system."
-        thread = self.gpt_settings["messages"][0]
         self.curr_prompt_name = promptName
+
+        # update prompt in the actual thread
+        thread = self.gpt_settings["messages"][0]
         systemPromptMsg = thread[0]
         assert systemPromptMsg["role"] == self.chatgpt_name, "First message in thread is NOT the system prompt message. It should be."
         thread[0]["content"][0]["text"] = self.map_promptname_to_prompt[promptName]
+        # and in the prompt note in the gptsettings
+        self.gpt_settings["prompt"][0] = self.curr_prompt_name
 
     async def _modify_prompts(self, usr_msg : str) -> str:
         '''
@@ -445,17 +450,15 @@ class ChatGPT:
         # change gpt prompt
         if usr_msg[:13] == "change prompt":
             # accept only the prompt name, update both str of msgs context and the messages list in gptsettings
-            try:
-                new_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
-                if new_prompt_name not in self.all_gpt_available_prompts:
-                    return f"Prompt {new_prompt_name} not available. Available prompts: {' '.join(self.all_gpt_available_prompts)}"
-                self._setPrompt(promptName=new_prompt_name)
-                return "New current prompt set to: " + new_prompt_name
-            except Exception as e:
-                return "usage: change prompt, [new prompt]"
+            print(usr_msg)
+            new_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
+            if new_prompt_name not in self.all_gpt_available_prompts:
+                return f"Prompt {new_prompt_name} not available. Available prompts: {' '.join(self.all_gpt_available_prompts)}"
+            self._setPrompt(promptName=new_prompt_name)
+            return "New current prompt set to: " + new_prompt_name
 
         # show available prompts as (ind. prompt)
-        if usr_msg == "show prompts":
+        if usr_msg == "list prompts":
             return self.get_all_gpt_prompts_as_str()
 
         # show user current gpt settings
@@ -487,24 +490,18 @@ class ChatGPT:
         If the user enters a shortcut command, convert it to the actual command.
         This function is only accessed if the usr_msg is recognized as a command (is prefixed by the command prefix symbol).
         '''
-        if usr_msg == "h":
-            return "help"
-        if usr_msg == "rt":
-            return "reset thread"
-        if usr_msg == "cl":
-            return "convo len"
-        if usr_msg == "st": 
-            return "show thread"
-        if usr_msg == "cp":
-            return "current prompt"
-        if usr_msg[:3] == "chp":
-            return "change prompt" + usr_msg[1:]
-        if usr_msg == "save":
-            return "save thread"
-        if usr_msg[:4] == "load" and usr_msg[5:11] != "thread":
-            return "load thread" + usr_msg[3:]
-        if usr_msg == "cm":
-            return "current model"
+        if usr_msg == "h": return "help"
+        if usr_msg == "rt": return "reset thread"
+        if usr_msg == "cl": return "convo len"
+        if usr_msg == "st": return "show thread"
+        if usr_msg == "cp": return "current prompt"
+        if usr_msg[:3] == "chp": return "change prompt" + usr_msg[3:]
+        if usr_msg == "lm": return "list models"
+        if usr_msg == "cm": return "current model"
+        if usr_msg == "lp": return "list prompts"
+
+        if usr_msg == "save": return "save thread"
+        if usr_msg[:4] == "load" and usr_msg[5:11] != "thread": return "load thread" + usr_msg[3:]
 
         # not a shortcut command
         return usr_msg
