@@ -31,7 +31,7 @@ class PersonalAssistant:
         prompt = "You are a personal assistant who interprets users requests into either one of the hard coded commands that you will learn about in a second or respond accordingly to the best of your knowledge."
         prompt += f"The hard-coded commands are: {str(self.personal_assistant_commands)}"
         prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
-        self.gpt_interpreter._setPrompt(prompt)
+        self.gpt_interpreter.addAndSetPrompt(promptName='personal_assistant', promptStr=prompt, resetThread=True)
 
         self.command_interpreter = CommandInterpreter(help_str=self.help_str, 
                                                       gpt_interpreter=self.gpt_interpreter,

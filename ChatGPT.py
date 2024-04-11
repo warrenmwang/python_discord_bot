@@ -59,7 +59,7 @@ class ChatGPT:
         defaultModel = 'gpt-4-vision-preview'
         self.gpt_settings = {
             "model": [defaultModel, "str"], 
-            "prompt": ["", "str"],
+            "prompt": ["", "str"], # only used to show to user the current prompt.
             "messages" : [[], "list of dicts"],
             "temperature": ["0.0", "float"],
             "top_p": ["1.0", "float"],
@@ -75,8 +75,8 @@ class ChatGPT:
         # gpt prompts
         self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
         assert self.gpt_prompts_file != '', "GPT_PROMPTS_FILE env var not set"
-        self.all_gpt_available_prompts = None # list of all prompt names
-        self.map_promptname_to_prompt = None # dictionary of (k,v) = (prompt_name, prompt_as_str)
+        self.all_gpt_available_prompts = [] # list of all prompt names
+        self.map_promptname_to_prompt = {} # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
 
         # modifying prompts
@@ -85,29 +85,29 @@ class ChatGPT:
         self.personal_assistant_modify_prompts_buff = []
 
         self.commands = {
-            "help" : "display this message",
-            "convo len" : 'show current gpt context length',
-            "reset thread" : 'reset gpt context length',
-            "show thread" : 'show the entire current convo context',
+            "help (h)" : "display this message",
+            "convo len (cl)" : 'show current gpt context length',
+            "reset thread (rt)" : 'reset gpt context length',
+            "show thread (st)" : 'show the entire current convo context',
             "gptsettings" : 'show the current gpt settings',
             "gptset": "format is `gptset [setting_name] [new_value]` modify gpt settings",
-            "curr prompt": "get the current prompt name",
-            "change prompt": "format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)",
+            "current prompt (cp)": "get the current prompt name",
+            "change prompt (chp)": "format `change prompt, [new prompt name]`",
             "show prompts": "show the available prompts for gpt",
             "models": "list the available gpt models",
             "modify prompts": "modify the prompts for gpt",
             "save thread": "save the current gptX thread to a file",
             "show old threads": "show the old threads that have been saved",
-            "load thread": "format is `load thread, [unique id]` load a gptX thread from a file",
-            "delete thread": "format is `delete thread, [unique id]` delete a gptX thread from a file",
-            "current model": "show the current gpt model",
+            "load thread": "format `load thread, [unique id]` load a gptX thread from a file",
+            "delete thread": "format `delete thread, [unique id]` delete a gptX thread from a file",
+            "current model (cm)": "show the current gpt model",
             "swap": "swap between different models",
         }
         self.commands_help_str = constructHelpMsg(self.commands)
 
         # initialize prompts
-        self.gpt_read_prompts_from_file() # read the prompts from disk
-        self.init_empty_prompt()
+        self.gpt_read_prompts_from_file() # read the prompts from disk, if any
+        self.init_empty_prompt() # at object instantiation, start with an empty system assistant prompt
     
     async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict = None) -> str:
         '''
@@ -221,18 +221,39 @@ class ChatGPT:
         if self.DEBUG: debug_log(f"Got response from ChatGPT API: {chatgptcompletion}")
         return response_msg
 
-    def _setPrompt(self, prompt : str) -> None:
+    def addAndSetPrompt(self, promptName : str, promptStr : str, resetThread : bool = False) -> None:
         '''
-        set the prompt for the model and update the messages settings dict
+        Set the current prompt (and add it into the available options if new) and
+        if [resetThread] is passed as True, reset the current message thread, o.w. leave 
+        the current thread alone.
         '''
-        self.curr_prompt_str = prompt
-        self.gpt_settings["prompt"][0] = prompt
-        l = self.gpt_settings["messages"][0]
-        if len(l) == 0:
-            l.append([{'role':'assistant', 'content':prompt}])
+        # altho assumption is that prompt is not already in system, if it is just move on
+        # and set the prompt.
+        if promptName not in self.all_gpt_available_prompts:
+            self.map_promptname_to_prompt[promptName] = promptStr
+            self.all_gpt_available_prompts.append(promptName)
+
+        # set current prompt to this prompt
+        self.curr_prompt_name = promptName
+        self.gpt_settings["prompt"][0] = self.curr_prompt_name
+
+        if resetThread:
+            # gpt_context_reset initializes new thread prompt based off of the self.curr_prompt_name
+            self.gpt_context_reset()
         else:
-            l[0] = {'role':'assistant', 'content':prompt}
-        self.gpt_settings["messages"][0] = l
+            self._setPrompt(self.curr_prompt_name)
+    
+    def _setPrompt(self, promptName : str) -> None:
+        '''
+        Assuming that the first message in the system is the system/assistant, 
+        modify the content (prompt) to the requested prompt.
+        '''
+        assert promptName in self.all_gpt_available_prompts, "Requested promptName is not in system."
+        thread = self.gpt_settings["messages"][0]
+        self.curr_prompt_name = promptName
+        systemPromptMsg = thread[0]
+        assert systemPromptMsg["role"] == self.chatgpt_name, "First message in thread is NOT the system prompt message. It should be."
+        thread[0]["content"][0]["text"] = self.map_promptname_to_prompt[promptName]
 
     async def _modify_prompts(self, usr_msg : str) -> str:
         '''
@@ -317,6 +338,7 @@ class ChatGPT:
         '''
         Modifies ChatGPT API params.
         Returns the output of an executed command or returns an error/help message.
+        Is only accessed if usr_msg is a command.
         '''
         # convert shortcut to full command if present
         usr_msg = self.shortcut_cmd_convertor(usr_msg)
@@ -396,7 +418,7 @@ class ChatGPT:
             return ret_str
 
         # show the current gpt prompt
-        if usr_msg == "curr prompt":
+        if usr_msg == "current prompt":
             return self.curr_prompt_name
 
         # just show current model
@@ -427,7 +449,7 @@ class ChatGPT:
                 new_prompt_name = list(map(str.strip, usr_msg.split(',')))[1]
                 if new_prompt_name not in self.all_gpt_available_prompts:
                     return f"Prompt {new_prompt_name} not available. Available prompts: {' '.join(self.all_gpt_available_prompts)}"
-                self.gpt_context_reset(prompt_name=new_prompt_name)
+                self._setPrompt(promptName=new_prompt_name)
                 return "New current prompt set to: " + new_prompt_name
             except Exception as e:
                 return "usage: change prompt, [new prompt]"
@@ -462,15 +484,20 @@ class ChatGPT:
 
     def shortcut_cmd_convertor(self, usr_msg :str) -> str:
         '''
-        if the user enters a shortcut command, convert it to the actual command
+        If the user enters a shortcut command, convert it to the actual command.
+        This function is only accessed if the usr_msg is recognized as a command (is prefixed by the command prefix symbol).
         '''
+        if usr_msg == "h":
+            return "help"
         if usr_msg == "rt":
             return "reset thread"
         if usr_msg == "cl":
             return "convo len"
         if usr_msg == "st": 
             return "show thread"
-        if usr_msg[:2] == "cp":
+        if usr_msg == "cp":
+            return "current prompt"
+        if usr_msg[:3] == "chp":
             return "change prompt" + usr_msg[1:]
         if usr_msg == "save":
             return "save thread"
@@ -497,6 +524,7 @@ class ChatGPT:
 
         Returns None if ok, else returns a error msg string.
         '''
+        # also allow user to user command like gptset, [setting_name], [new_value]
         if ',' in usr_msg:
             usr_msg = usr_msg.replace(',', ' ')
 
@@ -549,21 +577,26 @@ class ChatGPT:
             self.all_gpt_available_prompts.append('empty')
         
         # initialize thread with empty system/assistant prompt
-        self.init_prompt_name = "empty" # Default to an empty prompt, if not present in user's prompts list, append it
-        self.gpt_context_reset(prompt_name=self.init_prompt_name)
+        self.curr_prompt_name = "empty" # Default to an empty prompt, if not present in user's prompts list, append it
+        self.gpt_settings["prompt"][0] = self.curr_prompt_name
+        self.gpt_context_reset(prompt_name=self.curr_prompt_name)
 
     def gpt_context_reset(self, prompt_name : str = None) -> None:
         '''
-        resets the gpt context
-        > takes an optional input 'prompt_name' that denotes which prompt to use after resetting the thread (None for current, else a str for a new prompt)
-        > can be used at the start of program run and whenever a reset is wanted
+        Resets the gpt context.
+        Takes an optional argument that is the [prompt_name] used as a key to retrieve the 
+        prompt string from the hashmap / dictionary [self.map_promptname_to_prompt] that seeds
+        the new, empty thread (list of messages) as the system assistant's prompt. If the [prompt_name]
+        is not provided, the [self.curr_prompt_name] is used to retrieve the current set prompt's string.
         '''
         if prompt_name != None: 
             self.curr_prompt_name = prompt_name
             self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
 
+        self.curr_prompt_str = self.map_promptname_to_prompt[self.curr_prompt_name]
         self.gpt_settings["messages"][0] = [] # reset messages, old messages should be gc'd
-        self.add_msg_to_curr_thread(self.chatgpt_name, self.curr_prompt_str)
+        # add the first message in thread: the system prompt
+        self.add_msg_to_curr_thread(self.chatgpt_name, self.curr_prompt_str) 
     
     async def get_curr_gpt_thread(self) -> str:
         '''
