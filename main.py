@@ -19,7 +19,8 @@ class Main:
         assert self.TOKEN != '', "DISCORD_TOKEN environment variable not set."
 
         # ChatGPT
-        self.ChatGPT = ChatGPT(debug)
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.ChatGPT = ChatGPT(debug=debug, api_key=self.openai_api_key)
         self.chatgpt_channel = self.ChatGPT.gpt_channel_name
         if debug: debug_log(f"Started ChatGPT with channel name: {self.chatgpt_channel}")
 

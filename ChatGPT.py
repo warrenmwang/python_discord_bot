@@ -42,10 +42,10 @@ class Dalle:
 
 
 class ChatGPT:
-    def __init__(self, debug:bool = False):
+    def __init__(self, debug:bool = False, api_key:str=''):
         self.DEBUG = debug
-
-        self.client = OpenAI()
+        self.api_key = api_key
+        self.client = OpenAI(api_key=self.api_key)
         self.gpt_channel_name = os.getenv('GPT_CHANNEL_NAME')
         assert self.gpt_channel_name != '', "GPT_CHANNEL_NAME env var not set"
         # format: [max return tokens] [context length] [knowledge cutoff]
@@ -115,6 +115,8 @@ class ChatGPT:
         retrieves a GPT response given a string input and a dictionary containing the settings to use
         returns the response str
         '''
+        assert len(self.api_key) > 0, 'Empty API Key, cannot request GPT generation.'
+
         if settings_dict is None:
             settings_dict = self.gpt_settings
 
@@ -164,6 +166,8 @@ class ChatGPT:
         checks for attachments in the discord Message construct
         returns the response str
         '''
+        assert len(self.api_key) > 0, 'Empty API Key, cannot request GPT generation.'
+
         if settings_dict is None:
             settings_dict = self.gpt_settings
 
