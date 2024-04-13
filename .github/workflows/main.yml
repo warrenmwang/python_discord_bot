@@ -20,8 +20,7 @@ jobs:
         pip install -r requirements.txt
     - name: Run tests
       run: |
-        # Replace with your command to run tests
-        python -m unittest discover
+        python -m unittest discover -v -s ./tests
 
 
   deploy:

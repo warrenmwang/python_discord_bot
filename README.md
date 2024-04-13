@@ -7,9 +7,9 @@ You can talk directly with your text, pdf, and image files by loading them direc
 amongst personal out-of-ChatGPT training data.
 
 ## Prefix Commands
-Current Commands accessible with command prefix `!`:
+Current Commands accessible with command prefix `!`
 
-Personal Assistant Commands:
+Personal Assitant Commands:
 ```
 help             -- show this message
 remind me        -- format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time
@@ -19,29 +19,30 @@ query            -- (vector db) query documents in the Vector DB to be used to t
 _attachTextFile  -- Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. DO NOT PUT EVERYTHING INTO A SINGLE LINE, use newlines, tabs, normal code formatting. format is `_attachTextFile [commentary] [code]` where each section can span multiple lines.
 ```
 
-ChatGPT Commands:
+ChatGPT commands:
 ```
-help              -- display this message
-convo len         -- show current gpt context length
-reset thread      -- reset gpt context length
-show thread       -- show the entire current convo context
-gptsettings       -- show the current gpt settings
-gptset            -- format is `gptset [setting_name] [new_value]` modify gpt settings
-curr prompt       -- get the current prompt name
-change prompt     -- format is `change prompt, [new prompt]`, change prompt to the specified prompt(NOTE: resets entire message thread)
-show prompts      -- show the available prompts for gpt
-models            -- list the available gpt models
-modify prompts    -- modify the prompts for gpt
-save thread       -- save the current gptX thread to a file
-show old threads  -- show the old threads that have been saved
-load thread       -- format is `load thread, [unique id]` load a gptX thread from a file
-delete thread     -- format is `delete thread, [unique id]` delete a gptX thread from a file
-current model     -- show the current gpt model
-swap              -- swap between different models
+help (h)             -- display this message
+convo len (cl)       -- show current gpt context length
+reset thread (rt)    -- reset gpt context length
+show thread (st)     -- show the entire current convo context
+gptsettings          -- show the current gpt settings
+gptset               -- format is `gptset [setting_name] [new_value]` modify gpt settings
+current prompt (cp)  -- get the current prompt name
+change prompt (chp)  -- format `change prompt, [new prompt name]`
+list prompts (lp)    -- list the available prompts for gpt
+list models (lm)     -- list the available gpt models
+modify prompts       -- modify the prompts for gpt
+save thread          -- save the current gptX thread to a file
+show old threads     -- show the old threads that have been saved
+load thread          -- format `load thread, [unique id]` load a gptX thread from a file
+delete thread        -- format `delete thread, [unique id]` delete a gptX thread from a file
+current model (cm)   -- show the current gpt model
+swap                 -- hotswap btwn models: (['gpt-4-0125-preview', 'gpt-4-vision-preview'])
 ```
 
 ## Video Demonstration
 [![youtube video demonstration](https://img.youtube.com/vi/KFOIwvz3dY4/0.jpg)](https://www.youtube.com/watch?v=KFOIwvz3dY4)
+> Note video demonstrates usage of stable-diffusion, which is no longer a supported feature. A new video demo is on its way.
 
 ## Quick setup (using pip/conda)
 1. Prerequisites:
