@@ -22,11 +22,10 @@ jobs:
       run: |
         python -m unittest discover -v -s ./tests
 
-
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment: production
-
     steps:       
     - name: Deploy using ssh
       uses: appleboy/ssh-action@master

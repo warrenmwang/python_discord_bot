@@ -42,7 +42,7 @@ class Dalle:
 
 
 class ChatGPT:
-    def __init__(self, debug:bool = False, api_key:str=''):
+    def __init__(self, debug:bool = False, api_key:str='', readPromptFile:bool=False):
         self.DEBUG = debug
         self.api_key = api_key
         self.client = OpenAI(api_key=self.api_key)
@@ -107,7 +107,8 @@ class ChatGPT:
         self.commands_help_str = constructHelpMsg(self.commands)
 
         # initialize prompts
-        self.gpt_read_prompts_from_file() # read the prompts from disk, if any
+        if readPromptFile:
+            self.gpt_read_prompts_from_file() # read the prompts from disk, if any, if enabled.
         self.init_empty_prompt() # at object instantiation, start with an empty system assistant prompt
     
     async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict = None) -> str:
