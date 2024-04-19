@@ -46,8 +46,6 @@ class ChatGPT:
         self.DEBUG = debug
         self.api_key = api_key
         self.client = OpenAI(api_key=self.api_key)
-        self.gpt_channel_name = os.getenv('GPT_CHANNEL_NAME')
-        assert self.gpt_channel_name != '', "GPT_CHANNEL_NAME env var not set"
         # format: [max return tokens] [context length] [knowledge cutoff]
         self.gpt_models_info = {
             "gpt-4-0125-preview": [4096, 128000, "Dec 2023"],

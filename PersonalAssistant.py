@@ -8,10 +8,8 @@ class PersonalAssistant:
     '''
     Personal assistant, interprets hard-coded and arbitrary user commands/messages
     '''
-    def __init__(self, debug:bool=False, enableRAG:bool=False):
+    def __init__(self, debug:bool=False, enableRAG:bool=False, openai_api_key:str=''):
         self.DEBUG = debug
-        self.personal_assistant_channel = os.getenv('PERSONAL_ASSISTANT_CHANNEL')
-        assert self.personal_assistant_channel != '', "PERSONAL_ASSISTANT_CHANNEL environment variable not set."
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
         self.personal_assistant_modify_prompts_buff = []
@@ -27,7 +25,7 @@ class PersonalAssistant:
         self.help_str = constructHelpMsg(self.personal_assistant_commands)
         self.cmd_prefix = "!"
 
-        self.gpt_interpreter = ChatGPT(debug)
+        self.gpt_interpreter = ChatGPT(debug=debug, api_key=openai_api_key)
         prompt = "You are a personal assistant who interprets users requests into either one of the hard coded commands that you will learn about in a second or respond accordingly to the best of your knowledge."
         prompt += f"The hard-coded commands are: {str(self.personal_assistant_commands)}"
         prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."

@@ -17,16 +17,19 @@ class Main:
         # api keys
         self.TOKEN = os.getenv('DISCORD_TOKEN')
         assert self.TOKEN != '', "DISCORD_TOKEN environment variable not set."
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        assert self.openai_api_key != '', "OPENAI_API_KEY environment variable not set."
 
         # ChatGPT
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.chatgpt_channel = os.getenv('GPT_CHANNEL_NAME')
+        assert self.chatgpt_channel != '', 'ChatGPT Channel Name is not set.'
         self.ChatGPT = ChatGPT(debug=debug, api_key=self.openai_api_key)
-        self.chatgpt_channel = self.ChatGPT.gpt_channel_name
         if debug: debug_log(f"Started ChatGPT with channel name: {self.chatgpt_channel}")
 
         # personal assistant
-        self.PersonalAssistant = PersonalAssistant(debug, args.rag)
-        self.personal_assistant_channel = self.PersonalAssistant.personal_assistant_channel
+        self.personal_assistant_channel =  os.getenv('PERSONAL_ASSISTANT_CHANNEL')
+        assert self.personal_assistant_channel != '', 'Personal Assistant Channel Name is not set.'
+        self.PersonalAssistant = PersonalAssistant(debug=debug, enableRAG=args.rag, openai_api_key=self.openai_api_key)
         if debug: debug_log(f"Started Personal Assistant with channel name: {self.personal_assistant_channel}")
 
         # discord
