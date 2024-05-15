@@ -48,8 +48,8 @@ class ChatGPT:
         self.client = OpenAI(api_key=self.api_key)
         # format: [max return tokens] [context length] [knowledge cutoff]
         self.gpt_models_info = {
-            "gpt-4o": [128000, 128000, "Oct 2023"],
-            "gpt-4-turbo": [128000, 128000, "Dec 2023"],
+            "gpt-4o": [4096, 128000, "Oct 2023"],
+            "gpt-4-turbo": [4096, 128000, "Dec 2023"],
             "gpt-4-0125-preview": [4096, 128000, "Dec 2023"],
             "gpt-4-1106-preview": [4096, 128000, "Apr 2023"], 
             "gpt-4-vision-preview" : [4096, 128000, "Apr 2023"], 
