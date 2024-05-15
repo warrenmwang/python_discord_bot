@@ -9,7 +9,7 @@ amongst personal out-of-ChatGPT training data.
 ## Prefix Commands
 Current Commands accessible with command prefix `!`
 
-Personal Assitant Commands:
+Personal Assistant Commands:
 ```
 help             -- show this message
 remind me        -- format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time
