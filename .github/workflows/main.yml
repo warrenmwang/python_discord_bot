@@ -35,6 +35,6 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: 22
         script: |
-          cd /root/deployment_repos/python_discord_bot
+          cd /home/wang/deployment_repos/python_discord_bot
           git pull origin main
           ./restart_bot.sh

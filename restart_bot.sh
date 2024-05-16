@@ -2,8 +2,8 @@
 
 # Configuration
 SESSION_NAME="discord_bot"
-BOT_DIRECTORY="/root/deployment_repos/python_discord_bot"
-START_COMMAND="/root/anaconda3/envs/my_discord_bot/bin/python main.py"
+BOT_DIRECTORY="/home/wang/deployment_repos/python_discord_bot"
+START_COMMAND="/home/wang/bin/miniconda3/envs/my_discord_bot/bin/python main.py"
 
 # Navigate to the bot directory
 cd "$BOT_DIRECTORY"
