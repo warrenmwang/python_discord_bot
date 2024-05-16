@@ -21,3 +21,4 @@ else
 fi
 
 echo "Bot restarted in tmux session: $SESSION_NAME"
+
