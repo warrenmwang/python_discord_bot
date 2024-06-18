@@ -24,7 +24,7 @@ class Main:
         self.app_data_dir = os.getenv('APP_DATA_DIR')
 
         # ChatGPT
-        self.chatgpt_channel = os.getenv('GPT_CHANNEL_NAME')
+        self.chatgpt_channel = os.getenv('CHATGPT_CHANNEL')
         assert self.chatgpt_channel != '', 'ChatGPT Channel Name is not set.'
         self.ChatGPT = ChatGPT(debug=debug, api_key=self.openai_api_key, app_data_dir=self.app_data_dir)
         if debug: debug_log(f"Started ChatGPT with channel name: {self.chatgpt_channel}")

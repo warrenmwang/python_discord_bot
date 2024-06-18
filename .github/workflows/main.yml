@@ -25,5 +25,7 @@ jobs:
           export DISCORD_TOKEN=${{secrets.DISCORD_TOKEN}}
           export OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}
           export APP_DATA_DIR=${{secrets.APP_DATA_DIR}}
+          export CHATGPT_CHANNEL=${{secrets.CHATGPT_CHANNEL}}
+          export PERSONAL_ASSISTANT_CHANNEL=${{secrets.PERSONAL_ASSISTANT_CHANNEL}}
 
           docker compose up

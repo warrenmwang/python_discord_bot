@@ -8,6 +8,8 @@ services:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       APP_DATA_DIR: ${APP_DATA_DIR}
+      CHATGPT_CHANNEL: ${CHATPGPT_CHANNEL}
+      PERSONAL_ASSISTANT_CHANNEL: ${PERSONAL_ASSISTANT_CHANNEL}
     command: >
       sh -c "python -m unittest discover -v -s ./tests && python ./main.py"
 
