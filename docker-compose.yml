@@ -1,0 +1,16 @@
+services:
+
+  discord-bot:
+    build: ./
+    volumes:
+      - discord_bot_data:/app/data
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      APP_DATA_DIR: ${APP_DATA_DIR}
+    command: >
+      sh -c "python -m unittest discover -v -s ./tests && python ./main.py"
+
+volumes:
+  discord_bot_data:
+

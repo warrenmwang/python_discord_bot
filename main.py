@@ -1,7 +1,7 @@
 import discord
 import os
 from dotenv import load_dotenv
-load_dotenv()
+
 from ChatGPT import ChatGPT
 from PersonalAssistant import PersonalAssistant
 import argparse
@@ -11,7 +11,7 @@ from Message import Message
 class Main:
     def __init__(self, args : argparse.Namespace):
         # args
-        debug = args.debug
+        debug = args.dev
         if debug: debug_log("Debug mode enabled.")
 
         # api keys
@@ -20,16 +20,22 @@ class Main:
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         assert self.openai_api_key != '', "OPENAI_API_KEY environment variable not set."
 
+        # app data dir
+        self.app_data_dir = os.getenv('APP_DATA_DIR')
+
         # ChatGPT
         self.chatgpt_channel = os.getenv('GPT_CHANNEL_NAME')
         assert self.chatgpt_channel != '', 'ChatGPT Channel Name is not set.'
-        self.ChatGPT = ChatGPT(debug=debug, api_key=self.openai_api_key)
+        self.ChatGPT = ChatGPT(debug=debug, api_key=self.openai_api_key, app_data_dir=self.app_data_dir)
         if debug: debug_log(f"Started ChatGPT with channel name: {self.chatgpt_channel}")
 
         # personal assistant
         self.personal_assistant_channel =  os.getenv('PERSONAL_ASSISTANT_CHANNEL')
         assert self.personal_assistant_channel != '', 'Personal Assistant Channel Name is not set.'
-        self.PersonalAssistant = PersonalAssistant(debug=debug, enableRAG=args.rag, openai_api_key=self.openai_api_key)
+        self.PersonalAssistant = PersonalAssistant(debug=debug,
+                                                   enableRAG=args.rag,
+                                                   openai_api_key=self.openai_api_key,
+                                                   app_data_dir=self.app_data_dir)
         if debug: debug_log(f"Started Personal Assistant with channel name: {self.personal_assistant_channel}")
 
         # discord
@@ -85,9 +91,13 @@ class Main:
 if __name__ == "__main__":
     # parse cli args
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--debug", help="enable debug printing", action="store_true", default=False)
-    parser.add_argument("-r", '--rag', help='enable RAG for Personal Assistant', action="store_true", default=False)
+    parser.add_argument("-r", '--rag', help='enable RAG for Personal Assistant', action="store_true", default=True)
+    parser.add_argument("--dev", help="enable dev mode, which also enables debug mode", action="store_true", default=False)
     args = parser.parse_args()
+
+    # dev mode means env vars are in .env, o.w. prod env means env vars are in system
+    if args.dev:
+        load_dotenv()
 
     # run
     bot = Main(args)

@@ -10,7 +10,12 @@ class CommandInterpreter:
     Tries to interpret inputs as commands and perform the action requested
     If the action is not found to be a hard-coded command, reply the "command" or gpt response to user.
     '''
-    def __init__(self, help_str : str, gpt_interpreter : ChatGPT = None, debug : bool = False, enableRAG : bool = False):
+    def __init__(self,
+                 help_str : str,
+                 gpt_interpreter : ChatGPT = None,
+                 debug : bool = False,
+                 enableRAG : bool = False,
+                 app_data_dir : str = "./data"):
         '''
         an option to enable/disable RAG bc it is more computationally expensive, and i dont want to spend money in the cloud
         '''
@@ -25,14 +30,14 @@ class CommandInterpreter:
         if self.enableRAG:
             if debug: debug_log("CommandInterpreter: RAG is enabled.")
             self.gpt_interpreter = gpt_interpreter
-            chroma_data_path = "chroma_data/"
+            chroma_data_path = f"{app_data_dir}/chroma_data"
             embed_model = "all-MiniLM-L6-v2"
             collection_name = "main"
             self.vectorDB = VectorDB(chroma_data_path, embed_model, collection_name)
         else:
             if debug: debug_log("CommandInterpreter: RAG is not enabled.")
 
-    async def main(self, msg : Message, command : str) -> None:
+    async def main(self, msg : Message, command : str = None) -> None:
         '''
         tries to map the usr_msg to a functionality
         at this point, chatgpt should've interpretted any user command into one of these formats
@@ -41,6 +46,17 @@ class CommandInterpreter:
 
         Assumes: command does NOT have a command prefix symbol.
         '''
+        # Before this function would take command separately, but now it is assumed that the command is in the message
+        # allow the old way of passing in the command to be used still.
+        if command is None:
+            command = msg.content
+
+        if command == "help":
+            return self.help_str
+
+        if command == "chroma status":
+            return "on" if self.enableRAG else "off"
+
         if command[0:9] == "remind me":
             try:
                 tmp = list(map(str.strip, command.split(',')))
@@ -63,9 +79,6 @@ class CommandInterpreter:
             except Exception as e:
                 await send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
             return
-
-        if command == "help":
-            return self.help_str
 
         if command[0:4] == "draw":
             # draw images using dalle api

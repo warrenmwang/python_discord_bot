@@ -7,14 +7,17 @@ import sys
 sys.path.append('..')
 from ChatGPT import ChatGPT
 from Message import Message
+from CommandInterpreter import CommandInterpreter
+from PersonalAssistant import PersonalAssistant
 
 from dotenv import load_dotenv
 load_dotenv()
 
-class TestPrefixCommands(unittest.IsolatedAsyncioTestCase):
+class TestChatGPT(unittest.IsolatedAsyncioTestCase):
+    '''Test the ChatGPT classes' hard coded command features.'''
     @classmethod
     def setUpClass(self) -> None:
-        self.message = Message()
+        self.message = Message(msgType='test')
         self.chatgpt = ChatGPT()
     
     @classmethod
@@ -103,6 +106,38 @@ class TestPrefixCommands(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(role in ret)
         self.assertTrue(content in ret)
 
+class TestCommandInterpreter(unittest.IsolatedAsyncioTestCase):
+    '''Test functionality of commands hard coded into the CommandInterpreter.'''
+    @classmethod
+    def setUpClass(self) -> None:
+        self.message = Message(msgType='test')
+        self.cmdInterp = CommandInterpreter(help_str='help str')
+    
+    @classmethod
+    def tearDownClass(self) -> None:
+        self.cmdInterp = None
+
+    async def test_remind_me(self):
+        '''test the remind me feature.'''
+        self.message.content = 'remind me, call grandma, 0.01, s'
+        await self.cmdInterp.main(self.message)
+        
+
+    # TODO:
+
+class TestPersonalAssistant(unittest.IsolatedAsyncioTestCase):
+    ''''''
+    @classmethod
+    def setUpClass(self) -> None:
+        self.message = Message(msgType='test')
+        self.pa = PersonalAssistant()
+    
+    @classmethod
+    def tearDownClass(self) -> None:
+        self.pa = None
+
+
+    # TODO:
 
 
 if __name__ == '__main__':

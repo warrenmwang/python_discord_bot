@@ -9,42 +9,26 @@ amongst personal out-of-ChatGPT training data.
 ## Prefix Commands
 Current Commands accessible with command prefix `!`
 
-Personal Assistant Commands:
-```
-help             -- show this message
-remind me        -- format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time
-draw             -- format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3
-upload           -- (vector db) upload a text document (.pdf or .txt) to be stored into the Vector DB
-query            -- (vector db) query documents in the Vector DB to be used to talk with w/ ChatGPT; format is `[query] [prompt]`
-_attachTextFile  -- Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. DO NOT PUT EVERYTHING INTO A SINGLE LINE, use newlines, tabs, normal code formatting. format is `_attachTextFile [commentary] [code]` where each section can span multiple lines.
-```
-
-ChatGPT commands:
-```
-help (h)             -- display this message
-convo len (cl)       -- show current gpt context length
-reset thread (rt)    -- reset gpt context length
-show thread (st)     -- show the entire current convo context
-gptsettings          -- show the current gpt settings
-gptset               -- format is `gptset [setting_name] [new_value]` modify gpt settings
-current prompt (cp)  -- get the current prompt name
-change prompt (chp)  -- format `change prompt, [new prompt name]`
-list prompts (lp)    -- list the available prompts for gpt
-list models (lm)     -- list the available gpt models
-modify prompts       -- modify the prompts for gpt
-save thread          -- save the current gptX thread to a file
-show old threads     -- show the old threads that have been saved
-load thread          -- format `load thread, [unique id]` load a gptX thread from a file
-delete thread        -- format `delete thread, [unique id]` delete a gptX thread from a file
-current model (cm)   -- show the current gpt model
-swap                 -- hotswap btwn models: (['gpt-4-0125-preview', 'gpt-4-vision-preview'])
-```
-
 ## Video Demonstration
 [![youtube video demonstration](https://img.youtube.com/vi/KFOIwvz3dY4/0.jpg)](https://www.youtube.com/watch?v=KFOIwvz3dY4)
 > Note video demonstrates usage of stable-diffusion, which is no longer a supported feature. A new video demo is on its way.
 
-## Quick setup (using pip/conda)
+## Getting Started
+
+### Docker
+The easiest way to get started.
+1. Ensure variables are in your `.env` file.
+2. Source your env file to load the variables in the current shell's env.
+3. Run `docker compose up`. This will run the application and keep the shell attached to the 
+container's logs. If you want to run this detached, run `docker compose up -d`.
+
+To stop the running containerized application, run `docker compose down`.
+Note the default docker compose configuration creates a persistent volume that will store your RAG files, custom prompts, 
+and any saved threads to disk. 
+If you want to remove the persisted data in the named volume defined in the `docker-compose.yml`
+run `docker compose down -v`.
+
+### Running with a python environment
 1. Prerequisites:
     - Get Discord Bot Token
       - New Application for Discord Bot on Discord Developer Portal
@@ -59,21 +43,13 @@ swap                 -- hotswap btwn models: (['gpt-4-0125-preview', 'gpt-4-visi
 3. `cd` into the repo
 4. Python Environment Setup:
     ```
-    conda create -n my_discord_bot python=3.11.3
+    conda create -n my_discord_bot python=3.12.4
     conda activate my_discord_bot
     pip install -r requirements.txt
     ```
-    > NOTE: I'm arbitrarily using `python 3.11.3`. Probably any `3.11.X` will work. 
+  Yes use this specific python version.
 5. Create a `.env` file and put all your API keys and other info in there
-6. Run with `python ./main.py`. Here is the command line argument parser's help string for optional flags you can pass in:
-    ```
-    usage: main.py [-h] [-d] [-r]
-
-    options:
-      -h, --help   show this help message and exit
-      -d, --debug  enable debug printing
-      -r, --rag    enable RAG for Personal Assistant
-    ```
+6. Run with `python ./main.py`.
 
 ## Unit Tests
 

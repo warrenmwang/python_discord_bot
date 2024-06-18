@@ -1,11 +1,3 @@
 .env
 __pycache__*
-private/
-tmp/
-pickled_threads/
-run.sh
-.dockerignore
-cron_start.sh
-chroma_data/
-prompts.txt
-todo.txt
+data/

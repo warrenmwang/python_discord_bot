@@ -5,25 +5,7 @@ on:
     branches: [ main ]
 
 jobs:
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.11.3' 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    - name: Run tests
-      run: |
-        python -m unittest discover -v -s ./tests
-
   deploy:
-    needs: test
     runs-on: ubuntu-latest
     environment: production
     steps:       
@@ -36,5 +18,12 @@ jobs:
         port: 22
         script: |
           cd /home/wang/deployment_repos/python_discord_bot
+          docker compose down
           git pull origin main
-          ./restart_bot.sh
+
+          # Setup env vars
+          export DISCORD_TOKEN=${{secrets.DISCORD_TOKEN}}
+          export OPENAI_API_KEY=${{secrets.OPENAI_API_KEY}}
+          export APP_DATA_DIR=${{secrets.APP_DATA_DIR}}
+
+          docker compose up

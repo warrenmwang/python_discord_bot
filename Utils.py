@@ -36,32 +36,47 @@ async def send_msg_to_usr(msg : Message, usr_msg : str) -> None:
     '''
     if not isinstance(usr_msg, str): return # do nothing if input is not a string
 
-    discordMsg = msg.discordMsg
-    diff = len(usr_msg)
-    start = 0
-    end = DISCORD_MSGLEN_CAP
-    while diff > 0:
-        await discordMsg.channel.send(usr_msg[start:end])
-        start = end
-        end += DISCORD_MSGLEN_CAP
-        diff -= DISCORD_MSGLEN_CAP
+    if msg.msgType == 'discord':
+        discordMsg = msg.discordMsg
+        diff = len(usr_msg)
+        start = 0
+        end = DISCORD_MSGLEN_CAP
+        while diff > 0:
+            await discordMsg.channel.send(usr_msg[start:end])
+            start = end
+            end += DISCORD_MSGLEN_CAP
+            diff -= DISCORD_MSGLEN_CAP
+    elif msg.msgType == 'test':
+        print(usr_msg)
+    else:
+        print('Unknown msgType')
 
 async def send_img_to_usr(msg : Message, image : Image) -> None:
     '''send the image as bytes '''
-    discordMsg = msg.discordMsg
-    with io.BytesIO() as image_binary:
-        image.save(image_binary, format='PNG')
-        image_binary.seek(0)
-        await discordMsg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
+    if msg.msgType == 'discord':
+        discordMsg = msg.discordMsg
+        with io.BytesIO() as image_binary:
+            image.save(image_binary, format='PNG')
+            image_binary.seek(0)
+            await discordMsg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
+    elif msg.msgType == 'test':
+        print('Image sent')
+    else: 
+        print('Unknown msgType')
 
 async def send_as_file_attachment_to_usr(msg:Message, fileBytes:bytes, filename:str, fileExtension:str):
     '''
     Send as an file attachment the contents of fileBytes with name filename.fileExtension
     '''
-    discordMsg = msg.discordMsg
-    completeFilename = f"{filename}.{fileExtension}"
-    fileToSend = discord.File(fp=io.BytesIO(fileBytes), filename=completeFilename)
-    await discordMsg.channel.send(file=fileToSend)
+    if msg.msgType == 'discord':
+        discordMsg = msg.discordMsg
+        completeFilename = f"{filename}.{fileExtension}"
+        fileToSend = discord.File(fp=io.BytesIO(fileBytes), filename=completeFilename)
+        await discordMsg.channel.send(file=fileToSend)
+    elif msg.msgType == 'test':
+        print(f"File sent: {filename}.{fileExtension}")
+    else:
+        print('Unknown msgType')
 
 def constructHelpMsg(d : dict)->str:
     '''Stringify the dictionary of commands and their descriptions'''

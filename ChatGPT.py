@@ -42,7 +42,7 @@ class Dalle:
 
 
 class ChatGPT:
-    def __init__(self, debug:bool = False, api_key:str='', readPromptFile:bool=False):
+    def __init__(self, debug:bool = False, api_key:str='', readPromptFile:bool=False, app_data_dir: str = './data'):
         self.DEBUG = debug
         self.api_key = api_key
         self.client = OpenAI(api_key=self.api_key)
@@ -73,12 +73,12 @@ class ChatGPT:
         self.cmd_prefix = "!"
 
         # gpt prompts
-        self.gpt_prompts_file = os.getenv("GPT_PROMPTS_FILE") # pickled prompt name -> prompts dict
-        assert self.gpt_prompts_file != '', "GPT_PROMPTS_FILE env var not set"
+        self.gpt_prompts_file = f"{app_data_dir}/gpt_prompts.txt"
         self.all_gpt_available_prompts = [] # list of all prompt names
         self.map_promptname_to_prompt = {} # dictionary of (k,v) = (prompt_name, prompt_as_str)
         self.curr_prompt_name = None  # name of prompt we're currently using
         self.hotswap_models = ["gpt-4-0125-preview", "gpt-4-vision-preview"] # for now not changeable.
+        self.pickled_threads_dir = f"{app_data_dir}/pickled_threads"
 
         # modifying prompts
         self.modify_prompts_state = None
@@ -368,7 +368,7 @@ class ChatGPT:
             # grab current time in nanoseconds
             curr_time = time.time()
             # pickle the msgs_to_save and name it the current time
-            with open(f"./pickled_threads/{curr_time}.pkl", "wb") as f:
+            with open(f"{self.pickled_threads_dir}/{curr_time}.pkl", "wb") as f:
                 pickle.dump(msgs_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
             return f"Saved thread to file as {curr_time}.pkl"
  
@@ -376,9 +376,9 @@ class ChatGPT:
         if usr_msg == "show old threads":
             ret_str = ""
             # for now, list all the threads...
-            for filename in os.listdir("./pickled_threads"):
+            for filename in os.listdir(self.pickled_threads_dir):
                 # read the file and unpickle it
-                with open(f"./pickled_threads/{filename}", "rb") as f:
+                with open(f"{self.pickled_threads_dir}/{filename}", "rb") as f:
                     msgs_to_load = pickle.load(f)
                     ret_str += f"Thread id: {filename[:-4]}\n" # hide the file extension when displayed, its ugly
                     for tmp in msgs_to_load:
@@ -403,7 +403,7 @@ class ChatGPT:
                 thread_id = thread_id[:-4]
 
             # read the file and unpickle it
-            with open(f"./pickled_threads/{thread_id}.pkl", "rb") as f:
+            with open(f"{self.pickled_threads_dir}/{thread_id}.pkl", "rb") as f:
                 msgs_to_load = pickle.load(f)
                 # set the current gptsettings messages to this 
                 self.gpt_settings["messages"][0] = msgs_to_load
@@ -417,7 +417,7 @@ class ChatGPT:
                 return "No thread id specified"
 
             # delete the file
-            os.remove(f"./pickled_threads/{thread_id}.pkl")
+            os.remove(f"{self.pickled_threads_dir}/{thread_id}.pkl")
             return f"Deleted thread {thread_id}.pkl"
 
         # list available models of interest
@@ -557,6 +557,7 @@ class ChatGPT:
 
         # quit if prompt file doesn't exist
         if not os.path.exists(self.gpt_prompts_file):
+            if self.DEBUG: debug_log(f"Prompt file {self.gpt_prompts_file} doesn't exist. Abort reading prompts.")
             return
 
         # load in all the prompts

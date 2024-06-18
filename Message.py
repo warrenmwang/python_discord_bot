@@ -39,7 +39,9 @@ class Message:
 
     Methods whose name begins with _test are used for unit testing
     '''
-    def __init__(self):
+    def __init__(self, msgType : str = 'discord'):
+        self.msgType = msgType
+
         self.content = None
         self.author = None
         self.discordMsg = None

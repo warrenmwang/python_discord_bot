@@ -1,4 +1,3 @@
-import os
 from ChatGPT import ChatGPT
 from CommandInterpreter import CommandInterpreter
 from Utils import send_msg_to_usr, constructHelpMsg
@@ -8,7 +7,7 @@ class PersonalAssistant:
     '''
     Personal assistant, interprets hard-coded and arbitrary user commands/messages
     '''
-    def __init__(self, debug:bool=False, enableRAG:bool=False, openai_api_key:str=''):
+    def __init__(self, debug:bool=False, enableRAG:bool=False, openai_api_key:str='', app_data_dir:str="./data"):
         self.DEBUG = debug
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
@@ -17,6 +16,7 @@ class PersonalAssistant:
             "help": "show this message",
             "remind me": "format is `[remind me], [description], [numerical value], [time unit (s,m,h)]`; sets a reminder that will ping you in a specified amount of time",
             'draw': "format is `[draw]; [prompt]` and it allows you to draw images using Dalle API from OpenAI, default is using Dalle3",
+            'chroma status': "get the status of the Chroma Vector DB for ChatGPT memory",
             'upload': '(vector db) upload a text document (.pdf or .txt) to be stored into the Vector DB',
             'query': '(vector db) query documents in the Vector DB to be used to talk with w/ ChatGPT; format is `[query] [prompt]`',
             '_attachTextFile': "Command only for GPT interpreter. Wrap any long code segments in <CODESTART> <CODEEND> and any commentary in <COMMENTSTART> <COMMENTEND>. DO NOT PUT EVERYTHING INTO A SINGLE LINE, use newlines, tabs, normal code formatting. format is `_attachTextFile [commentary] [code]` where each section can span multiple lines."
@@ -25,7 +25,7 @@ class PersonalAssistant:
         self.help_str = constructHelpMsg(self.personal_assistant_commands)
         self.cmd_prefix = "!"
 
-        self.gpt_interpreter = ChatGPT(debug=debug, api_key=openai_api_key)
+        self.gpt_interpreter = ChatGPT(debug=debug, api_key=openai_api_key, app_data_dir=app_data_dir)
         prompt = "You are a personal assistant who interprets users requests into either one of the hard coded commands that you will learn about in a second or respond accordingly to the best of your knowledge."
         prompt += f"The hard-coded commands are: {str(self.personal_assistant_commands)}"
         prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
@@ -34,7 +34,8 @@ class PersonalAssistant:
         self.command_interpreter = CommandInterpreter(help_str=self.help_str, 
                                                       gpt_interpreter=self.gpt_interpreter,
                                                       debug=debug, 
-                                                      enableRAG=enableRAG)
+                                                      enableRAG=enableRAG,
+                                                      app_data_dir=app_data_dir)
 
     async def main(self, msg : Message) -> str:
         '''
