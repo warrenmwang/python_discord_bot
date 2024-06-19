@@ -18,7 +18,11 @@ jobs:
         port: 22
         script: |
           cd /home/wang/deployment_repos/python_discord_bot
+
+          # stop the old container
           docker compose down
+
+          # fast forward to new code
           git pull origin main
 
           # Setup env vars
@@ -28,4 +32,6 @@ jobs:
           export CHATGPT_CHANNEL=${{secrets.CHATGPT_CHANNEL}}
           export PERSONAL_ASSISTANT_CHANNEL=${{secrets.PERSONAL_ASSISTANT_CHANNEL}}
 
-          docker compose up
+          # build and start new container
+          docker compose build
+          docker compose up -d --remove-orphans
