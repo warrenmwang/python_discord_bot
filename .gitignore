@@ -1,3 +1,4 @@
 .env
+.env_deploy
 __pycache__*
 data/
