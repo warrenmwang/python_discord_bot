@@ -19,11 +19,11 @@ docker compose down
 git pull origin main
 
 # Setup env vars
-export DISCORD_TOKEN=\${DISCORD_TOKEN}
-export OPENAI_API_KEY=\${OPENAI_API_KEY}
-export APP_DATA_DIR=\${APP_DATA_DIR}
-export CHATGPT_CHANNEL=\${CHATGPT_CHANNEL}
-export PERSONAL_ASSISTANT_CHANNEL=\${PERSONAL_ASSISTANT_CHANNEL}
+export DISCORD_TOKEN=${DISCORD_TOKEN}
+export OPENAI_API_KEY=${OPENAI_API_KEY}
+export APP_DATA_DIR=${APP_DATA_DIR}
+export CHATGPT_CHANNEL=${CHATGPT_CHANNEL}
+export PERSONAL_ASSISTANT_CHANNEL=${PERSONAL_ASSISTANT_CHANNEL}
 
 # build and start new container
 docker compose build
