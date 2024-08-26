@@ -9,10 +9,6 @@ amongst personal out-of-ChatGPT training data.
 ## Prefix Commands
 Current Commands accessible with command prefix `!`
 
-## Video Demonstration
-[![youtube video demonstration](https://img.youtube.com/vi/KFOIwvz3dY4/0.jpg)](https://www.youtube.com/watch?v=KFOIwvz3dY4)
-> Note video demonstrates usage of stable-diffusion, which is no longer a supported feature. A new video demo is on its way.
-
 ## Getting Started
 
 ### Docker
