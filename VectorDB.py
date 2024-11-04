@@ -20,20 +20,20 @@ class VectorDB:
         collection = client.get_or_create_collection(name=self.collection_name, embedding_function=embedding_func, metadata={"hnsw:space": "cosine"})
         return collection
 
-    def upload(self, document:str, metadata:dict=None) -> None:
+    def upload(self, document:str, metadata:dict|None=None) -> None:
         '''
         Insert into the db the document (just a str) and any metadata (optional json/dict of values)
         '''
         self.collection.add(
             documents=[document],
             ids=[str(uuid.uuid4())],
-            metadatas=[metadata if metadata is not None else None]
+            metadatas=[metadata] if metadata is not None else None
         )
 
     def query(self, prompt:str, k:int=1) -> list[str]:
         '''
         Query db and return the top k (default 1) responses
-        resposnes are ordered by increasing distance 
+        responses are ordered by increasing distance 
         NOTE: optionally can use metadata and a constraint that says response must contain a particular string
         '''
         response = self.collection.query(
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     COLLECTION_NAME = "test1"
 
     db = VectorDB(CHROMA_DATA_PATH, EMBED_MODEL, COLLECTION_NAME, debug=False)
-    
+
     print("Uploading documents...")
     db.upload('pizza is delicious and contains many calories although it can be unhealthy long term.')
     db.upload('apples and cranberries are the best fruits known to mankind.')

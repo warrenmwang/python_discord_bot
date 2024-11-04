@@ -3,6 +3,7 @@ import discord
 import re
 import os
 import fitz # PyMuPDF
+from fitz.fitz import base64
 import pytesseract # OCR engine
 from PIL import Image
 import io
@@ -10,34 +11,126 @@ import datetime
 from typing import Callable, Any
 import asyncio
 
+import requests
+
 DISCORD_MSGLEN_CAP=2000
 
-def debug_log(s: str)->None:
-    '''print string s in debug logging format'''
+class MyCustomException(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+
+class MyPDF:
+    def __init__(self, url : str, embedded_text : str, ocr_text : str, raw_bytes : bytes):
+        self.url = url
+        self.embedded_text = embedded_text
+        self.ocr_text = ocr_text
+        self.raw_bytes = raw_bytes
+
+'''
+This acts as a common data structure for messages, which will allow me to 
+decouple any internet messaging platform (e.g. Discord) and my own 
+chatbot / personal assistant logic.
+
+I realized I needed to decouple things and introduce this common data structure
+after I wanted to introduce unit tests.
+'''
+class Message:
+    '''
+    Standard attachments format, as declared by myself, is going to be:
+        dict[str -> list[str | object]]
+    where the contents of the lists varies for key:
+        1. texts: str
+        2. images: base64 encoded str
+        3. pdfs: MyPDF Class Objects
+
+    Methods whose name begins with _test are used for unit testing
+    '''
+    def __init__(self, msgType : str = 'discord'):
+        self.msgType = msgType
+
+        self.content: str = ""
+        self.author: discord.User | discord.Member | None = None
+        self.discordMsg: discord.message.Message | None = None
+        self.attachments = None
+
+    def importFromDiscord(self, msg : discord.message.Message) -> None:
+        '''Imports the parts of the discord message that I actually use.'''
+
+        self.content = msg.content # str
+        self.author = msg.author   # discord.User | discord.Member
+        self.discordMsg = msg      # discord.message.Message
+
+        self.attachments = None
+
+        if msg.attachments:
+            self.attachments = {}
+            self.attachments['texts'] = []
+            self.attachments['images'] = []
+            self.attachments['pdfs'] = []
+
+            text_file_formats = ['.txt', '.c', '.cpp', '.py', '.ipynb', '.java', '.js', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md']
+            image_file_formats = ['.jpg', '.png', '.heic']
+
+            for attachment in msg.attachments:
+                # text files (plain text and code)
+                # text files are stored as strings
+                for file_format in text_file_formats:
+                    if attachment.filename.endswith(file_format):
+                        # Download the attachment
+                        response = requests.get(attachment.url)
+                        if response.status_code != 200: 
+                            raise MyCustomException(f'request got status code: {response.status_code}')
+                        file_content = response.text
+                        self.attachments['texts'].append(file_content)
+
+                # images (allow .jpg, .png, .heic)
+                # images are stored as base64 encoded strings
+                for image_format in image_file_formats:
+                    if attachment.filename.endswith(image_format):
+                        response = requests.get(attachment.url)
+                        if response.status_code != 200:
+                            raise MyCustomException(f'request got status code: {response.status_code}')
+                        encodedImage = base64.b64encode(response.content).decode('utf-8')
+                        self.attachments['images'].append(encodedImage)
+
+                # pdfs (save as a MyPDF object)
+                if attachment.filename.endswith('.pdf'):
+                    response = requests.get(attachment.url)
+                    if response.status_code != 200:
+                        raise MyCustomException(f'request got status code: {response.status_code}')
+                    embedded_text, ocr_text = read_pdf_from_memory(response.content)
+                    mypdf = MyPDF(attachment.url, embedded_text, ocr_text, response.content) 
+                    self.attachments['pdfs'].append(mypdf)
+
+def debug_log(s: object)->None:
+    '''
+    Print object s to log, where s could be a string or any object that can be viewed as a str.
+    '''
     # Get the current terminal width
     terminal_width = os.get_terminal_size().columns
-    
+
     # Prepare the debug message
     debug_message = f"DEBUG: {s}"
-    
+
     # Get the current timestamp
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     # Calculate the number of spaces needed to align the timestamp to the right
     spaces_needed = terminal_width - len(debug_message) - len(timestamp) - 1
-    
+
     # Print the debug message with the timestamp aligned to the right
     print(f"{debug_message}{' ' * spaces_needed}{timestamp}")
 
-async def send_msg_to_usr(msg : Message, usr_msg : str) -> None: 
+async def send_msg_to_usr(msg: Message, usr_msg: str | None) -> None: 
     '''
     in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
     the damn message (whether it be one or multiple messages)
     '''
-    if not isinstance(usr_msg, str): return # do nothing if input is not a string
+    if usr_msg is None: return
 
     if msg.msgType == 'discord':
         discordMsg = msg.discordMsg
+        if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
         diff = len(usr_msg)
         start = 0
         end = DISCORD_MSGLEN_CAP
@@ -51,10 +144,11 @@ async def send_msg_to_usr(msg : Message, usr_msg : str) -> None:
     else:
         print('Unknown msgType')
 
-async def send_img_to_usr(msg : Message, image : Image) -> None:
+async def send_img_to_usr(msg : Message, image : Image.Image) -> None:
     '''send the image as bytes '''
     if msg.msgType == 'discord':
         discordMsg = msg.discordMsg
+        if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
         with io.BytesIO() as image_binary:
             image.save(image_binary, format='PNG')
             image_binary.seek(0)
@@ -70,6 +164,7 @@ async def send_as_file_attachment_to_usr(msg:Message, fileBytes:bytes, filename:
     '''
     if msg.msgType == 'discord':
         discordMsg = msg.discordMsg
+        if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
         completeFilename = f"{filename}.{fileExtension}"
         fileToSend = discord.File(fp=io.BytesIO(fileBytes), filename=completeFilename)
         await discordMsg.channel.send(file=fileToSend)
@@ -84,10 +179,10 @@ def constructHelpMsg(d : dict)->str:
 
     # initially construct the strings
     n = len(d.items())
-    strings = [None for i in range(n)]
+    strings = ['' for _ in range(n)]
     for i, (k,v) in enumerate(d.items()):
         strings[i] = f'{k} -- {v}'
-    
+
     # Find the maximum length of the first part (before the dash)
     max_length = max(len(s.split('--')[0]) for s in strings)
 

@@ -1,13 +1,66 @@
-# ChatGPT Discord Bot 
+# ChatGPT Discord Bot
 
-## What does this do?
-This is a Discord chat interface for ChatGPT API models (e.g. gpt-4-1106-preview, gpt-4-vision-preview, dalle3, etc.) from OpenAI. 
-You can talk directly with your text, pdf, and image files by loading them directly in the current session context or by uploading them 
-(currently only pdf and txt files are supported for vector db) into the VectorDB for long-term storage and more extensive searching 
-amongst personal out-of-ChatGPT training data.
+## Overview
+A powerful Discord bot that integrates OpenAI's latest models (GPT-4, GPT-4 Vision, DALL-E 3) to provide advanced chat capabilities and AI-powered features in your Discord server. The bot supports:
 
-## Prefix Commands
-Current Commands accessible with command prefix `!`
+- Text conversations with GPT-4 and other OpenAI models
+- Image analysis and generation using GPT-4 Vision and DALL-E 3
+- Document processing (PDF, TXT) with built-in memory
+- RAG (Retrieval-Augmented Generation) capabilities using VectorDB
+- Persistent conversation history
+- Custom prompt management
+
+## Key Features
+- **Multiple AI Models**: Support for various OpenAI models including gpt-4-1106-preview and gpt-4-vision-preview
+- **Document Processing**: Upload and analyze PDF and TXT files
+- **Long-term Memory**: Store and search through documents using VectorDB
+- **Image Capabilities**: Analyze images with GPT-4 Vision and generate images with DALL-E 3
+- **Context Management**: Maintain conversation context within sessions
+- **Custom Commands**: Accessible via the '!' prefix
+
+## Commands
+All commands start with the prefix `!`. Here are some key commands:
+
+### General Commands
+- `help` - Show this message
+- `remind me` - Set a reminder that will ping you in a specified amount of time
+  - Format: `[remind me], [description], [numerical value], [time unit (s,m,h)]`
+- `draw` - Generate images using DALL-E 3
+  - Format: `[draw]; [prompt]`
+
+### Vector Database Commands
+- `chroma status` - Get the status of the Chroma Vector DB for ChatGPT memory
+- `upload` - Upload a text document (.pdf or .txt) to be stored into the Vector DB
+- `query` - Query documents in the Vector DB to talk with ChatGPT
+  - Format: `[query] [prompt]`
+- `_attachTextFile` - Command for GPT interpreter
+  - Format: `_attachTextFile [commentary] [code]`
+  - Use `<CODESTART>` `<CODEEND>` for code segments
+  - Use `<COMMENTSTART>` `<COMMENTEND>` for commentary
+
+### GPT Commands
+- `help (h)` - Display this message
+- `convo len (cl)` - Show current GPT context length
+- `reset thread (rt)` - Reset GPT context length
+- `show thread (st)` - Show the entire current conversation context
+- `gptsettings` - Show the current GPT settings
+- `gptset` - Modify GPT settings
+  - Format: `gptset [setting_name] [new_value]`
+- `current prompt (cp)` - Get the current prompt name
+- `change prompt (chp)` - Change to a new prompt
+  - Format: `change prompt, [new prompt name]`
+- `list prompts (lp)` - List available prompts
+- `list models (lm)` - List available GPT models
+- `modify prompts` - Modify the prompts for GPT
+- `save thread` - Save the current GPT thread to a file
+- `show old threads` - Show saved threads
+- `load thread` - Load a GPT thread from file
+  - Format: `load thread, [unique id]`
+- `delete thread` - Delete a GPT thread
+  - Format: `delete thread, [unique id]`
+- `current model (cm)` - Show the current GPT model
+- `swap` - Switch between models (gpt-4-0125-preview, gpt-4-vision-preview)
+
 
 ## Getting Started
 

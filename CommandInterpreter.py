@@ -1,9 +1,8 @@
 from Utils import send_msg_to_usr
 from ChatGPT import Dalle, ChatGPT
 import asyncio
-from Utils import find_text_between_markers, debug_log, send_img_to_usr, send_as_file_attachment_to_usr
+from Utils import find_text_between_markers, debug_log, send_img_to_usr, send_as_file_attachment_to_usr, Message
 from VectorDB import VectorDB
-from Message import Message
 
 class CommandInterpreter:
     '''
@@ -12,7 +11,7 @@ class CommandInterpreter:
     '''
     def __init__(self,
                  help_str : str,
-                 gpt_interpreter : ChatGPT = None,
+                 gpt_interpreter : ChatGPT | None = None,
                  debug : bool = False,
                  enableRAG : bool = False,
                  app_data_dir : str = "./data"):
@@ -37,7 +36,7 @@ class CommandInterpreter:
         else:
             if debug: debug_log("CommandInterpreter: RAG is not enabled.")
 
-    async def main(self, msg : Message, command : str = None) -> None:
+    async def main(self, msg : Message, command : str | None = None) -> None | str:
         '''
         tries to map the usr_msg to a functionality
         at this point, chatgpt should've interpretted any user command into one of these formats
@@ -76,7 +75,7 @@ class CommandInterpreter:
                 await send_msg_to_usr(msg, f"Reminder set for '{task}' in {time} {unit}.")
                 await asyncio.sleep(remind_time)
                 await send_msg_to_usr(msg, f"REMINDER: {task}")
-            except Exception as e:
+            except Exception as _:
                 await send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
             return
 
@@ -92,7 +91,7 @@ class CommandInterpreter:
                 await send_img_to_usr(msg, await self.dalle.main(prompt))
                 return 
             except Exception as error:
-                return error
+                return str(error)
 
         ### Vector DB
         # user uploads a pdf to ingest into the vector db
@@ -116,13 +115,14 @@ class CommandInterpreter:
 
             # pass to gpt
             prompt = f"ORIGINAL USER QUERY:{command[6:]}\nVECTOR DB CONTEXT:{db_context}\nRESPONSE:"
+            if self.gpt_interpreter is None: raise Exception("command interpreter's unexpected gpt interpreter is None.")
             gpt_response = await self.gpt_interpreter.mainNoAttachments(prompt)
 
             return gpt_response
-            
+
 
         #### "HIDDEN COMMANDS"
-    
+
         if command[0:15] == '_attachTextFile':
             # attaches text file(s) for the contents in between the markers <CODESTART> and <CODEEND>
             code = find_text_between_markers(command, start_marker="<CODESTART>", end_marker="<CODEEND>")

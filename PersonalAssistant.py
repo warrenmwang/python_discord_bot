@@ -1,7 +1,6 @@
 from ChatGPT import ChatGPT
 from CommandInterpreter import CommandInterpreter
-from Utils import send_msg_to_usr, constructHelpMsg
-from Message import Message
+from Utils import send_msg_to_usr, constructHelpMsg, Message
 
 class PersonalAssistant:
     '''
@@ -37,7 +36,7 @@ class PersonalAssistant:
                                                       enableRAG=enableRAG,
                                                       app_data_dir=app_data_dir)
 
-    async def main(self, msg : Message) -> str:
+    async def main(self, msg : Message) -> str | None:
         '''
         Handles the user input for one of the hard-coded commands, if unable to find a hard-coded command to fulfill request
         will use one of the LLM interpreters available (for now local LLAMA or chatgpt)
@@ -48,10 +47,6 @@ class PersonalAssistant:
         2. ChatGPT Response -> Try hard coded, otherwise send back to user
         '''
         usr_msg = msg.content
-
-        # handle personal assistant state (if any)
-        if self.personal_assistant_state == "modify prompts":
-            return await self._pa_modify_prompts(self, usr_msg)
 
         # list all the commands available
         if usr_msg == f"{self.cmd_prefix}help":

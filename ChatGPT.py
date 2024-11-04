@@ -3,19 +3,18 @@ import os
 import pickle
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from Utils import constructHelpMsg, debug_log
+from Utils import constructHelpMsg, debug_log, Message
 import time
 from PIL import Image
 import io, base64
-from Message import Message
 
 class Dalle:
     def __init__(self, debug:bool):
         self.DEBUG = debug
         self.model = "dall-e-3"
         self.client = OpenAI()
-        
-    async def main(self, prompt : str) -> Image:
+
+    async def main(self, prompt : str) -> Image.Image:
         '''
         Create an image using Dalle from openai and return it as a base64-encoded image
         '''
@@ -34,7 +33,8 @@ class Dalle:
             response = await loop.run_in_executor(executor, blocking_api_call)
 
         # decode from base 64 json into image
-        encoded_img = response.data[0].b64_json
+        tmp = response.data[0].b64_json
+        encoded_img = tmp if tmp is not None else ""
         image = Image.open(io.BytesIO(base64.b64decode(encoded_img)))
 
         # return image
@@ -46,6 +46,7 @@ class ChatGPT:
         self.DEBUG = debug
         self.api_key = api_key
         self.client = OpenAI(api_key=self.api_key)
+
         # format: [max return tokens] [context length] [knowledge cutoff]
         self.gpt_models_info = {
             "gpt-4o": [4096, 128000, "Oct 2023"],
@@ -110,8 +111,8 @@ class ChatGPT:
         if readPromptFile:
             self.gpt_read_prompts_from_file() # read the prompts from disk, if any, if enabled.
         self.init_empty_prompt() # at object instantiation, start with an empty system assistant prompt
-    
-    async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict = None) -> str:
+
+    async def genGPTResponseNoAttachments(self, prompt : str, settings_dict : dict | None = None) -> str:
         '''
         retrieves a GPT response given a string input and a dictionary containing the settings to use
         returns the response str
@@ -150,44 +151,38 @@ class ChatGPT:
                 presence_penalty = float(settings_dict["presence_penalty"][0]),
                 max_tokens = int(settings_dict["max_tokens"][0])
             )
-        
+
         # Run the blocking function in a separate thread using run_in_executor
         if self.DEBUG: debug_log(f"Sent to ChatGPT API: {settings_dict['messages'][0]}")
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
             completion = await loop.run_in_executor(executor, blocking_api_call)
-        
-        chatgptcompletion = completion.choices[0].message.content
+
+        tmp = completion.choices[0].message.content
+        chatgptcompletion = tmp if tmp is not None else ""
         if self.DEBUG: debug_log(f"Got response from ChatGPT API: {chatgptcompletion}")
         return chatgptcompletion
 
-    async def genGPTResponseWithAttachments(self, msg : Message, settings_dict: dict = None) -> str:
+    async def genGPTResponseWithAttachments(self, msg : Message) -> str:
         '''
         retrieves a GPT response given a string input and a dictionary containing the settings to use
         checks for attachments in the discord Message construct
         returns the response str
         '''
         assert len(self.api_key) > 0, 'Empty API Key, cannot request GPT generation.'
-
-        if settings_dict is None:
-            settings_dict = self.gpt_settings
+        settings_dict = self.gpt_settings
 
         response_msg = ""
 
         # init content with the user's message
-        content = [
-            {"type": "text",
-             "text": msg.content
-            }
-        ]
+        content = [{ "type": "text", "text": msg.content }]
 
         # attachments 
         if msg.attachments is not None:
             for text in msg.attachments['texts']:
                 content[0]['text'] = content[0]['text'] + "\n<FILECONTENTSTART>:\n" + text + "\n<FILECONTENTEND>"
             for imageB64str in msg.attachments['images']:
-                image_dict = {"type": "image_url"}
-                image_dict["image_url"] = {"url" : f"data:image/jpeg;base64,{imageB64str}"}
+                image_dict = {"type": "image_url", "image_url": {"url" : f"data:image/jpeg;base64,{imageB64str}"}}
                 content.append(image_dict)
             for pdf in msg.attachments['pdfs']:
                 embedded_text, ocr_text = pdf.embedded_text, pdf.ocr_text
@@ -215,14 +210,15 @@ class ChatGPT:
                 presence_penalty = float(settings_dict["presence_penalty"][0]),
                 max_tokens = int(settings_dict["max_tokens"][0])
             )
-        
+
         # Run the blocking function in a separate thread using run_in_executor
         if self.DEBUG: debug_log(f"Sent to ChatGPT API: {settings_dict['messages'][0]}")
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
             completion = await loop.run_in_executor(executor, blocking_api_call)
-        
-        chatgptcompletion = completion.choices[0].message.content
+
+        tmp = completion.choices[0].message.content
+        chatgptcompletion = tmp if tmp is not None else ""
         response_msg += chatgptcompletion
         if self.DEBUG: debug_log(f"Got response from ChatGPT API: {chatgptcompletion}")
         return response_msg
@@ -344,6 +340,8 @@ class ChatGPT:
             self.modify_prompts_state_tmp = None
             return  f"Changed '{prompt_name}' to '{new_prompt_name}'"
 
+        return "Error: unexpected modify prompts state."
+
     async def modifyParams(self, usr_msg : str) -> str:
         '''
         Modifies ChatGPT API params.
@@ -429,12 +427,12 @@ class ChatGPT:
 
         # show the current gpt prompt
         if usr_msg == "current prompt":
-            return self.curr_prompt_name
+            return self.curr_prompt_name if self.curr_prompt_name is not None else "Current prompt is not initialized."
 
         # just show current model
         if usr_msg == "current model":
             return f"Current model: {self.gpt_settings['model'][0]}"
-        
+
         # toggle which model to use (toggle between the latest gpt4 turbo and the vision model)
         if usr_msg == "swap":
             curr_model = self.gpt_settings["model"][0]
@@ -474,7 +472,7 @@ class ChatGPT:
         if usr_msg[0:6] == "gptset":
             await self.modifygptset(usr_msg)
             return self.gptsettings()
-        
+
         # show the current thread
         if usr_msg == "show thread":
             return await self.get_curr_gpt_thread()
@@ -483,11 +481,11 @@ class ChatGPT:
         if usr_msg == "reset thread":
             self.gpt_context_reset()
             return f"Thread Reset. {await self.get_curr_convo_len_and_approx_tokens()}"
-        
+
         # check curr convo context length
         if usr_msg == "convo len":
             return await self.get_curr_convo_len_and_approx_tokens()
-        
+
         return "Unknown command."
 
     def shortcut_cmd_convertor(self, usr_msg :str) -> str:
@@ -518,9 +516,9 @@ class ChatGPT:
         '''
         tmp = len(await self.get_curr_gpt_thread())
         return f"len:{tmp} | tokens: ~{tmp/4}"
-    
-    async def modifygptset(self, usr_msg : str) -> None:
-        ''' 
+
+    async def modifygptset(self, usr_msg : str) -> None | str:
+        '''
         Executes both gptset and gptsettings (to print out the new gpt api params for the next call)
         expect format: gptset [setting_name] [new_value]
 
@@ -531,11 +529,11 @@ class ChatGPT:
             usr_msg = usr_msg.replace(',', ' ')
 
         try:
-            self.gptset(usr_msg, self.gpt_settings)
-        except Exception as e:
+            self.gptset(usr_msg)
+        except Exception as _:
             return "gptset: gptset [setting_name] [new_value]"
         return None
-    
+
     def gpt_save_prompts_to_file(self) -> None:
         '''
         saves the prompt_name -> prompt dictionary to disk via pickling
@@ -571,20 +569,20 @@ class ChatGPT:
                 prompt = tmp[1].strip()
                 self.map_promptname_to_prompt[prompt_name] = prompt
                 self.all_gpt_available_prompts.append(prompt_name)
-            
+
     def init_empty_prompt(self) -> None:
         '''inits an empty prompt for the message thread, if not present in prompts listing'''
         # add empty prompt if not present
         if 'empty' not in self.all_gpt_available_prompts:
             self.map_promptname_to_prompt['empty'] = ''
             self.all_gpt_available_prompts.append('empty')
-        
+
         # initialize thread with empty system/assistant prompt
         self.curr_prompt_name = "empty" # Default to an empty prompt, if not present in user's prompts list, append it
         self.gpt_settings["prompt"][0] = self.curr_prompt_name
         self.gpt_context_reset(prompt_name=self.curr_prompt_name)
 
-    def gpt_context_reset(self, prompt_name : str = None) -> None:
+    def gpt_context_reset(self, prompt_name : str | None = None) -> None:
         '''
         Resets the gpt context.
         Takes an optional argument that is the [prompt_name] used as a key to retrieve the 
@@ -600,7 +598,7 @@ class ChatGPT:
         self.gpt_settings["messages"][0] = [] # reset messages, old messages should be gc'd
         # add the first message in thread: the system prompt
         self.add_msg_to_curr_thread(self.chatgpt_name, self.curr_prompt_str) 
-    
+
     async def get_curr_gpt_thread(self) -> str:
         '''
         Generates the current gpt conversation thread as a string from the gptsettings messages list
@@ -638,16 +636,12 @@ class ChatGPT:
         gpt_settings = self.gpt_settings
         return "".join([f"{key} ({gpt_settings[key][1]}) = {gpt_settings[key][0]}\n" for key in gpt_settings.keys() if key != "messages"])
 
-    def gptset(self, usr_msg : str, options : str = None) -> None:
+    def gptset(self, usr_msg : str) -> None:
         '''
-        format is 
-
-        GPTSET [setting_name] [new_value]
-
-        sets the specified gpt parameter to the new value
-        
-        e.g.
-        usr_msg = prompt, "bob the builder loves to build"
+        Updates the gpt settings object used for GPT completions. Format is GPTSET [setting_name] [new_value].
+        Sets the specified gpt parameter to the new value.
+            e.g.
+            usr_msg = prompt, "bob the builder loves to build"
         '''
         tmp = usr_msg.split()
         setting, new_val = tmp[1], tmp[2]
@@ -683,7 +677,7 @@ class ChatGPT:
         while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
             # remove the 2nd oldest message from the thread (first oldest is the prompt)
             self.gpt_settings["messages"][0].pop(1)
-        
+
         # use usr_msg to generate new response from API
         gpt_response = await self.genGPTResponseNoAttachments(prompt)
 
@@ -713,7 +707,7 @@ class ChatGPT:
         while curr_thread_len_in_tokens > int(self.gpt_settings["context_length"][0]):
             # remove the 2nd oldest message from the thread (first oldest is the prompt)
             self.gpt_settings["messages"][0].pop(1)
-        
+
         # use usr_msg to generate new response from API
         gpt_response = await self.genGPTResponseWithAttachments(msg)
 
