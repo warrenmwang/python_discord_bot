@@ -92,7 +92,7 @@ run `docker compose down -v`.
 3. `cd` into the repo
 4. Python Environment Setup:
     ```
-    conda create -n my_discord_bot python=3.12.4
+    conda create -n my_discord_bot python=3.12
     conda activate my_discord_bot
     pip install -r requirements.txt
     ```

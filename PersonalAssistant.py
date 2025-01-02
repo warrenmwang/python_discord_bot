@@ -1,13 +1,13 @@
-from ChatGPT import ChatGPT
+from GenerativeAI import LLM_Controller
 from CommandInterpreter import CommandInterpreter
-from Utils import send_msg_to_usr, constructHelpMsg, Message
+from Utils import constructHelpMsg, Message
 
 class PersonalAssistant:
     '''
     Personal assistant, interprets hard-coded and arbitrary user commands/messages
     '''
-    def __init__(self, debug:bool=False, enableRAG:bool=False, openai_api_key:str='', app_data_dir:str="./data"):
-        self.DEBUG = debug
+    def __init__(self, enableRAG: bool = True):
+        self.DEBUG = False
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
         self.personal_assistant_modify_prompts_buff = []
@@ -24,17 +24,13 @@ class PersonalAssistant:
         self.help_str = constructHelpMsg(self.personal_assistant_commands)
         self.cmd_prefix = "!"
 
-        self.gpt_interpreter = ChatGPT(debug=debug, api_key=openai_api_key, app_data_dir=app_data_dir)
-        prompt = "You are a personal assistant who interprets users requests into either one of the hard coded commands that you will learn about in a second or respond accordingly to the best of your knowledge."
-        prompt += f"The hard-coded commands are: {str(self.personal_assistant_commands)}"
-        prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
-        self.gpt_interpreter.addAndSetPrompt(promptName='personal_assistant', promptStr=prompt, resetThread=True)
+        self.gpt_interpreter = LLM_Controller()
 
         self.command_interpreter = CommandInterpreter(help_str=self.help_str, 
                                                       gpt_interpreter=self.gpt_interpreter,
-                                                      debug=debug, 
-                                                      enableRAG=enableRAG,
-                                                      app_data_dir=app_data_dir)
+                                                      enableRAG=enableRAG)
+
+        self.setup_complete = False
 
     async def main(self, msg : Message) -> str | None:
         '''
@@ -46,14 +42,21 @@ class PersonalAssistant:
         2. GPT Interpreter Settings
         2. ChatGPT Response -> Try hard coded, otherwise send back to user
         '''
+        if not self.setup_complete:
+            prompt = "You are a personal assistant who interprets users requests into either one of the hard coded commands that you will learn about in a second or respond accordingly to the best of your knowledge."
+            prompt += f"The hard-coded commands are: {str(self.personal_assistant_commands)}"
+            prompt += f"If you recognize what the user wants, output a single line that will activate the hard coded command prefixed with {self.cmd_prefix} and nothing else. Otherwise, talk."
+            await self.gpt_interpreter.main(Message.from_text(f"!_add_and_set_prompt<SEP>personal_assistant<SEP>{prompt}<SEP>True"))
+            self.setup_complete = True
+
         usr_msg = msg.content
 
         # list all the commands available
         if usr_msg == f"{self.cmd_prefix}help":
             pa_cmds = f"PA Commands:\n{self.help_str}"
             gpt_cmds = f"GPT Commands:\n{await self.gpt_interpreter.main(msg)}"
-            await send_msg_to_usr(msg, pa_cmds)
-            await send_msg_to_usr(msg, gpt_cmds)
+            await Message.send_msg_to_usr(msg, pa_cmds)
+            await Message.send_msg_to_usr(msg, gpt_cmds)
             return None
 
         # hard coded commands

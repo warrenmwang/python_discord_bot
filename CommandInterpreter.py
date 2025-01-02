@@ -1,7 +1,6 @@
-from Utils import send_msg_to_usr
-from ChatGPT import Dalle, ChatGPT
+from GenerativeAI import Dalle, LLM_Controller
 import asyncio
-from Utils import find_text_between_markers, debug_log, send_img_to_usr, send_as_file_attachment_to_usr, Message
+from Utils import find_text_between_markers, debug_log, send_as_file_attachment_to_usr, Message
 from VectorDB import VectorDB
 
 class CommandInterpreter:
@@ -11,7 +10,7 @@ class CommandInterpreter:
     '''
     def __init__(self,
                  help_str : str,
-                 gpt_interpreter : ChatGPT | None = None,
+                 gpt_interpreter : LLM_Controller | None = None,
                  debug : bool = False,
                  enableRAG : bool = False,
                  app_data_dir : str = "./data"):
@@ -21,20 +20,21 @@ class CommandInterpreter:
         self.DEBUG = debug
         self.help_str = help_str
 
-        # Dalle
-        self.dalle = Dalle(debug)
+        self.dalle = Dalle()
 
         # VectorDB for RAG
         self.enableRAG = enableRAG
         if self.enableRAG:
-            if debug: debug_log("CommandInterpreter: RAG is enabled.")
+            if debug:
+                debug_log("CommandInterpreter: RAG is enabled.")
             self.gpt_interpreter = gpt_interpreter
             chroma_data_path = f"{app_data_dir}/chroma_data"
             embed_model = "all-MiniLM-L6-v2"
             collection_name = "main"
             self.vectorDB = VectorDB(chroma_data_path, embed_model, collection_name)
         else:
-            if debug: debug_log("CommandInterpreter: RAG is not enabled.")
+            if debug:
+                debug_log("CommandInterpreter: RAG is not enabled.")
 
     async def main(self, msg : Message, command : str | None = None) -> None | str:
         '''
@@ -69,14 +69,14 @@ class CommandInterpreter:
                 elif unit == "d":
                     remind_time = time * 86400
                 else:
-                    await send_msg_to_usr(msg, "only time units implemented: s, m, h, d")
+                    await Message.send_msg_to_usr(msg, "only time units implemented: s, m, h, d")
                     return
 
-                await send_msg_to_usr(msg, f"Reminder set for '{task}' in {time} {unit}.")
+                await Message.send_msg_to_usr(msg, f"Reminder set for '{task}' in {time} {unit}.")
                 await asyncio.sleep(remind_time)
-                await send_msg_to_usr(msg, f"REMINDER: {task}")
+                await Message.send_msg_to_usr(msg, f"REMINDER: {task}")
             except Exception as _:
-                await send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
+                await Message.send_msg_to_usr(msg, "usage: remind me, [task_description], [time], [unit]")
             return
 
         if command[0:4] == "draw":
@@ -84,11 +84,13 @@ class CommandInterpreter:
             # for now, keep things simple with just the word draw semicolon and then the prompt
             try:
                 prompt = command.split(";")
-                if len(prompt) != 2: return "Invalid draw command."
+                if len(prompt) != 2:
+                    return "Invalid draw command."
                 prompt = prompt[1].strip()
-                if len(prompt) == 0: return "Cannot draw empty prompt."
-                await send_msg_to_usr(msg, f"Creating an image of `{prompt}`")
-                await send_img_to_usr(msg, await self.dalle.main(prompt))
+                if len(prompt) == 0:
+                    return "Cannot draw empty prompt."
+                await Message.send_msg_to_usr(msg, f"Creating an image of `{prompt}`")
+                await Message.send_img_to_usr(msg, await self.dalle.main(Message.from_text(prompt)))
                 return 
             except Exception as error:
                 return str(error)
@@ -96,7 +98,8 @@ class CommandInterpreter:
         ### Vector DB
         # user uploads a pdf to ingest into the vector db
         if command == "upload":
-            if not self.enableRAG: return "RAG is not enabled. Upload cannot be performed."
+            if not self.enableRAG:
+                return "RAG is not enabled. Upload cannot be performed."
             if msg.attachments:
                 for pdf in msg.attachments['pdfs']:
                     embedded_text, ocr_text = pdf.embedded_text, pdf.ocr_text
@@ -107,15 +110,18 @@ class CommandInterpreter:
             return "Upload complete."
 
         if command[:5] == "query":
-            if not self.enableRAG: return "RAG is not enabled. Query cannot be performed."
+            if not self.enableRAG:
+                return "RAG is not enabled. Query cannot be performed."
             # get context from db
             db_query_prompt = command[6:]
             db_context = self.vectorDB.query(db_query_prompt)[0]
-            if self.DEBUG: debug_log(f"Vector db retrieved: {db_context}")
+            if self.DEBUG:
+                debug_log(f"Vector db retrieved: {db_context}")
 
             # pass to gpt
             prompt = f"ORIGINAL USER QUERY:{command[6:]}\nVECTOR DB CONTEXT:{db_context}\nRESPONSE:"
-            if self.gpt_interpreter is None: raise Exception("command interpreter's unexpected gpt interpreter is None.")
+            if self.gpt_interpreter is None:
+                raise Exception("command interpreter's unexpected gpt interpreter is None.")
             gpt_response = await self.gpt_interpreter.mainNoAttachments(prompt)
 
             return gpt_response
