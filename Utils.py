@@ -3,7 +3,7 @@ import discord
 import re
 import os
 import fitz # PyMuPDF
-from fitz.fitz import base64
+import base64
 import pytesseract # OCR engine
 from PIL import Image
 import io
@@ -45,16 +45,30 @@ class Message:
 
     Methods whose name begins with _test are used for unit testing
     '''
-    def __init__(self, msgType : str = 'discord'):
+    def __init__(self, msgType: str = 'discord'):
         self.msgType = msgType
 
         self.content: str = ""
         self.author: discord.User | discord.Member | None = None
-        self.discordMsg: discord.message.Message | None = None
+        self.discordMsg: discord.message.Message | None = None # obj needed for sending msgs back to the user
         self.attachments = None
+ 
+    def _import_from_bare_text(self, msg: str) -> None:
+        """
+        Mutates the current instance and basically treats Message as a thin wrapper
+        around a basic message type that's just a string.
 
-    def importFromDiscord(self, msg : discord.message.Message) -> None:
-        '''Imports the parts of the discord message that I actually use.'''
+        NOTE: without a discord message object, this cannot be used to send a message
+        back to the user using discord interface.
+        """
+        self.msgType = "bare"
+        self.content = msg
+
+    def _import_from_discord(self, msg: discord.message.Message) -> None:
+        """
+        Imports the parts of the discord message that I actually use.
+        Mutates the current instance.
+        """
 
         self.content = msg.content # str
         self.author = msg.author   # discord.User | discord.Member
@@ -102,6 +116,58 @@ class Message:
                     mypdf = MyPDF(attachment.url, embedded_text, ocr_text, response.content) 
                     self.attachments['pdfs'].append(mypdf)
 
+    @staticmethod
+    async def send_msg_to_usr(msg: Message, usr_msg: str | None) -> None: 
+        '''
+        in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
+        the damn message (whether it be one or multiple messages)
+        '''
+        if usr_msg is None: return
+
+        if msg.msgType == 'discord':
+            discordMsg = msg.discordMsg
+            if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
+            diff = len(usr_msg)
+            start = 0
+            end = DISCORD_MSGLEN_CAP
+            while diff > 0:
+                await discordMsg.channel.send(usr_msg[start:end])
+                start = end
+                end += DISCORD_MSGLEN_CAP
+                diff -= DISCORD_MSGLEN_CAP
+        elif msg.msgType == 'test':
+            print(usr_msg)
+        else:
+            print('Unknown msgType')
+
+    @staticmethod
+    async def send_img_to_usr(msg : Message, image : Image.Image) -> None:
+        '''send the image as bytes '''
+        if msg.msgType == 'discord':
+            discordMsg = msg.discordMsg
+            if discordMsg is None:
+                raise Exception("Unexpected discordMsg is None.")
+            with io.BytesIO() as image_binary:
+                image.save(image_binary, format='PNG')
+                image_binary.seek(0)
+                await discordMsg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
+        elif msg.msgType == 'test':
+            print('Image sent')
+        else: 
+            print('Unknown msgType')
+
+    @staticmethod
+    def from_text(msg: str) -> Message:
+        x = Message(msgType="bare")
+        x._import_from_bare_text(msg)
+        return x
+
+    @staticmethod
+    def from_discord(msg: discord.message.Message) -> Message:
+        x = Message(msgType="discord")
+        x._import_from_discord(msg)
+        return x
+
 def debug_log(s: object)->None:
     '''
     Print object s to log, where s could be a string or any object that can be viewed as a str.
@@ -120,43 +186,6 @@ def debug_log(s: object)->None:
 
     # Print the debug message with the timestamp aligned to the right
     print(f"{debug_message}{' ' * spaces_needed}{timestamp}")
-
-async def send_msg_to_usr(msg: Message, usr_msg: str | None) -> None: 
-    '''
-    in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
-    the damn message (whether it be one or multiple messages)
-    '''
-    if usr_msg is None: return
-
-    if msg.msgType == 'discord':
-        discordMsg = msg.discordMsg
-        if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
-        diff = len(usr_msg)
-        start = 0
-        end = DISCORD_MSGLEN_CAP
-        while diff > 0:
-            await discordMsg.channel.send(usr_msg[start:end])
-            start = end
-            end += DISCORD_MSGLEN_CAP
-            diff -= DISCORD_MSGLEN_CAP
-    elif msg.msgType == 'test':
-        print(usr_msg)
-    else:
-        print('Unknown msgType')
-
-async def send_img_to_usr(msg : Message, image : Image.Image) -> None:
-    '''send the image as bytes '''
-    if msg.msgType == 'discord':
-        discordMsg = msg.discordMsg
-        if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
-        with io.BytesIO() as image_binary:
-            image.save(image_binary, format='PNG')
-            image_binary.seek(0)
-            await discordMsg.channel.send(file=discord.File(fp=image_binary, filename='image.png'))
-    elif msg.msgType == 'test':
-        print('Image sent')
-    else: 
-        print('Unknown msgType')
 
 async def send_as_file_attachment_to_usr(msg:Message, fileBytes:bytes, filename:str, fileExtension:str):
     '''

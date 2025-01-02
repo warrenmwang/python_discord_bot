@@ -5,7 +5,7 @@ and classes.
 import unittest
 import sys
 sys.path.append('..')
-from ChatGPT import ChatGPT
+from GenerativeAI import LLM_API
 from Message import Message
 from CommandInterpreter import CommandInterpreter
 from PersonalAssistant import PersonalAssistant
@@ -18,7 +18,7 @@ class TestChatGPT(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(self) -> None:
         self.message = Message(msgType='test')
-        self.chatgpt = ChatGPT()
+        self.chatgpt = LLM_API()
     
     @classmethod
     def tearDownClass(self) -> None:
