@@ -1,11 +1,9 @@
 import chromadb
 from chromadb.utils import embedding_functions
 import uuid
-from Utils import debug_log
 
 class VectorDB:
-    def __init__(self, data_path:str, embed_model:str, collection_name:str, debug:bool=False):
-        self.DEBUG = debug
+    def __init__(self, data_path:str, embed_model:str, collection_name:str):
         self.data_path = data_path
         self.embed_model = embed_model
         self.collection_name = collection_name
@@ -40,7 +38,6 @@ class VectorDB:
             query_texts=[prompt],
             n_results=k 
         )
-        if self.DEBUG: debug_log(response)
         return response['documents'][0]
 
     def size(self) -> int:
@@ -51,7 +48,7 @@ if __name__ == '__main__':
     EMBED_MODEL = "all-MiniLM-L6-v2"
     COLLECTION_NAME = "test1"
 
-    db = VectorDB(CHROMA_DATA_PATH, EMBED_MODEL, COLLECTION_NAME, debug=False)
+    db = VectorDB(CHROMA_DATA_PATH, EMBED_MODEL, COLLECTION_NAME)
 
     print("Uploading documents...")
     db.upload('pizza is delicious and contains many calories although it can be unhealthy long term.')

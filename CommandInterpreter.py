@@ -1,6 +1,6 @@
-from GenerativeAI import Dalle, LLM_Controller
+from GenerativeAI import Image_Gen_Controller, LLM_Controller
 import asyncio
-from Utils import find_text_between_markers, debug_log, send_as_file_attachment_to_usr, Message
+from Utils import find_text_between_markers, Message
 from VectorDB import VectorDB
 
 class CommandInterpreter:
@@ -11,30 +11,19 @@ class CommandInterpreter:
     def __init__(self,
                  help_str : str,
                  gpt_interpreter : LLM_Controller | None = None,
-                 debug : bool = False,
-                 enableRAG : bool = False,
                  app_data_dir : str = "./data"):
         '''
         an option to enable/disable RAG bc it is more computationally expensive, and i dont want to spend money in the cloud
         '''
-        self.DEBUG = debug
         self.help_str = help_str
-
-        self.dalle = Dalle()
+        self.image_gen = Image_Gen_Controller()
 
         # VectorDB for RAG
-        self.enableRAG = enableRAG
-        if self.enableRAG:
-            if debug:
-                debug_log("CommandInterpreter: RAG is enabled.")
-            self.gpt_interpreter = gpt_interpreter
-            chroma_data_path = f"{app_data_dir}/chroma_data"
-            embed_model = "all-MiniLM-L6-v2"
-            collection_name = "main"
-            self.vectorDB = VectorDB(chroma_data_path, embed_model, collection_name)
-        else:
-            if debug:
-                debug_log("CommandInterpreter: RAG is not enabled.")
+        self.gpt_interpreter = gpt_interpreter
+        chroma_data_path = f"{app_data_dir}/chroma_data"
+        embed_model = "all-MiniLM-L6-v2"
+        collection_name = "main"
+        self.vectorDB = VectorDB(chroma_data_path, embed_model, collection_name)
 
     async def main(self, msg : Message, command : str | None = None) -> None | str:
         '''
@@ -90,7 +79,7 @@ class CommandInterpreter:
                 if len(prompt) == 0:
                     return "Cannot draw empty prompt."
                 await Message.send_msg_to_usr(msg, f"Creating an image of `{prompt}`")
-                await Message.send_img_to_usr(msg, await self.dalle.main(Message.from_text(prompt)))
+                await Message.send_img_to_usr(msg, await self.image_gen.main(Message.from_text(prompt)))
                 return 
             except Exception as error:
                 return str(error)
@@ -115,8 +104,6 @@ class CommandInterpreter:
             # get context from db
             db_query_prompt = command[6:]
             db_context = self.vectorDB.query(db_query_prompt)[0]
-            if self.DEBUG:
-                debug_log(f"Vector db retrieved: {db_context}")
 
             # pass to gpt
             prompt = f"ORIGINAL USER QUERY:{command[6:]}\nVECTOR DB CONTEXT:{db_context}\nRESPONSE:"
@@ -133,7 +120,7 @@ class CommandInterpreter:
             # attaches text file(s) for the contents in between the markers <CODESTART> and <CODEEND>
             code = find_text_between_markers(command, start_marker="<CODESTART>", end_marker="<CODEEND>")
             fileBytes = "".join(code).encode()
-            await send_as_file_attachment_to_usr(msg, fileBytes, 'code', '.txt')
+            await Message.send_as_file_attachment_to_usr(msg, fileBytes, 'code', '.txt')
 
             # returns any commentary denoted by <COMMENTSTART> and <COMMENTEND>
             comment = find_text_between_markers(command, start_marker="<COMMENTSTART>", end_marker="<COMMENTEND>")

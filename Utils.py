@@ -122,11 +122,13 @@ class Message:
         in case msg is longer than the DISCORD_MSGLEN_CAP, this abstracts away worrying about that and just sends 
         the damn message (whether it be one or multiple messages)
         '''
-        if usr_msg is None: return
+        if usr_msg is None:
+            return
 
         if msg.msgType == 'discord':
             discordMsg = msg.discordMsg
-            if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
+            if discordMsg is None:
+                raise Exception("Unexpected discordMsg is None.")
             diff = len(usr_msg)
             start = 0
             end = DISCORD_MSGLEN_CAP
@@ -154,6 +156,22 @@ class Message:
         elif msg.msgType == 'test':
             print('Image sent')
         else: 
+            print('Unknown msgType')
+
+    @staticmethod
+    async def send_as_file_attachment_to_usr(msg:Message, fileBytes:bytes, filename:str, fileExtension:str):
+        '''
+        Send as an file attachment the contents of fileBytes with name filename.fileExtension
+        '''
+        if msg.msgType == 'discord':
+            if msg.discordMsg is None:
+                raise Exception("Unexpected discordMsg is None.")
+            completeFilename = f"{filename}.{fileExtension}"
+            fileToSend = discord.File(fp=io.BytesIO(fileBytes), filename=completeFilename)
+            await msg.discordMsg.channel.send(file=fileToSend)
+        elif msg.msgType == 'test':
+            print(f"File sent: {filename}.{fileExtension}")
+        else:
             print('Unknown msgType')
 
     @staticmethod
@@ -186,21 +204,6 @@ def debug_log(s: object)->None:
 
     # Print the debug message with the timestamp aligned to the right
     print(f"{debug_message}{' ' * spaces_needed}{timestamp}")
-
-async def send_as_file_attachment_to_usr(msg:Message, fileBytes:bytes, filename:str, fileExtension:str):
-    '''
-    Send as an file attachment the contents of fileBytes with name filename.fileExtension
-    '''
-    if msg.msgType == 'discord':
-        discordMsg = msg.discordMsg
-        if discordMsg is None: raise Exception("Unexpected discordMsg is None.")
-        completeFilename = f"{filename}.{fileExtension}"
-        fileToSend = discord.File(fp=io.BytesIO(fileBytes), filename=completeFilename)
-        await discordMsg.channel.send(file=fileToSend)
-    elif msg.msgType == 'test':
-        print(f"File sent: {filename}.{fileExtension}")
-    else:
-        print('Unknown msgType')
 
 def constructHelpMsg(d : dict)->str:
     '''Stringify the dictionary of commands and their descriptions'''

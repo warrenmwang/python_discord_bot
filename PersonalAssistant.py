@@ -6,7 +6,7 @@ class PersonalAssistant:
     '''
     Personal assistant, interprets hard-coded and arbitrary user commands/messages
     '''
-    def __init__(self, enableRAG: bool = True):
+    def __init__(self):
         self.DEBUG = False
         self.personal_assistant_state = None
         self.personal_assistant_modify_prompts_state = None
@@ -27,8 +27,7 @@ class PersonalAssistant:
         self.gpt_interpreter = LLM_Controller()
 
         self.command_interpreter = CommandInterpreter(help_str=self.help_str, 
-                                                      gpt_interpreter=self.gpt_interpreter,
-                                                      enableRAG=enableRAG)
+                                                      gpt_interpreter=self.gpt_interpreter)
 
         self.setup_complete = False
 
@@ -62,7 +61,8 @@ class PersonalAssistant:
         # hard coded commands
         if usr_msg[0] == self.cmd_prefix:
             x = await self.command_interpreter.main(msg, usr_msg[1:])
-            if x != 'Unknown command.': return x
+            if x != 'Unknown command.':
+                return x
             # see if it's a gpt modify command
             gpt_response = await self.gpt_interpreter.main(msg)
             if gpt_response != "Unknown command.":
