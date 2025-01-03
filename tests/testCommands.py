@@ -9,6 +9,7 @@ from GenerativeAI import LLM_Controller
 from Utils import Message
 from CommandInterpreter import CommandInterpreter
 from PersonalAssistant import PersonalAssistant
+import io
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -76,7 +77,8 @@ class TestChatGPT(unittest.IsolatedAsyncioTestCase):
         firstLength = await self.chatgpt.main(self.message)
         firstLength = int(firstLength.split(" ")[0].split(":")[1])
         # add a message
-        self.chatgpt.add_msg_to_curr_thread('user', 'hello world!')
+        self.message.content = "!_add_msg_to_curr_thread<SEP>user<SEP>hello world"
+        await self.chatgpt.main(self.message)
         # get new length
         self.message.content = '!cl'
         secondLength = await self.chatgpt.main(self.message)
@@ -100,7 +102,8 @@ class TestChatGPT(unittest.IsolatedAsyncioTestCase):
         # add a message to thread
         role = 'system'.capitalize()
         content = 'hello human, what do u want?'
-        self.chatgpt.add_msg_to_curr_thread(role, content)
+        self.message.content = f"!_add_msg_to_curr_thread<SEP>{role}<SEP>{content}"
+        await self.chatgpt.main(self.message)
         self.message.content = '!st'
         ret = await self.chatgpt.main(self.message)
         self.assertTrue(role in ret)
@@ -119,9 +122,18 @@ class TestCommandInterpreter(unittest.IsolatedAsyncioTestCase):
 
     async def test_remind_me(self):
         '''test the remind me feature.'''
+        # Capture stdout to check reminder message
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
         self.message.content = 'remind me, call grandma, 0.01, s'
-        await self.cmdInterp.main(self.message)
-        
+        await self.cmdInterp.main(self.message) # this is awaited, so reminder will finish
+
+        sys.stdout = sys.__stdout__ # reset stdout for other tests
+
+        output = captured_output.getvalue()
+        self.assertIn("Reminder set for 'call grandma' in 0.01 s", output)
+        self.assertIn("REMINDER: call grandma", output)
 
     # TODO:
 

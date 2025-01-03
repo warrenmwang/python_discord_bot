@@ -469,6 +469,13 @@ class OpenAI_LLM(LLM_Instance):
         if usr_msg == "convo len":
             return await self._get_curr_convo_len_and_approx_tokens()
 
+        # format: `_add_msg_to_curr_thread<SEP>[role]<SEP>[content]`
+        if usr_msg.startswith("_add_msg_to_curr_thread"):
+            x = usr_msg.split("<SEP>")
+            role, content = x[1], x[2]
+            self._add_msg_to_curr_thread(role, content)
+            return "[assistant]: command completed."
+
         return "Unknown command."
 
     def _shortcut_cmd_convertor(self, usr_msg :str) -> str:
