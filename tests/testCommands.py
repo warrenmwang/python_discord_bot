@@ -17,13 +17,9 @@ load_dotenv()
 class TestChatGPT(unittest.IsolatedAsyncioTestCase):
     '''Test the ChatGPT classes' hard coded command features.'''
     @classmethod
-    def setUpClass(self) -> None:
-        self.message = Message(msgType='test')
-        self.chatgpt = LLM_Controller()
-    
-    @classmethod
-    def tearDownClass(self) -> None:
-        self.chatgpt = None
+    def setUpClass(cls) -> None:
+        cls.message = Message(msgType='test')
+        cls.chatgpt: LLM_Controller = LLM_Controller()
 
     async def test_help(self):
         '''test can get help message'''
@@ -112,13 +108,9 @@ class TestChatGPT(unittest.IsolatedAsyncioTestCase):
 class TestCommandInterpreter(unittest.IsolatedAsyncioTestCase):
     '''Test functionality of commands hard coded into the CommandInterpreter.'''
     @classmethod
-    def setUpClass(self) -> None:
-        self.message = Message(msgType='test')
-        self.cmdInterp = CommandInterpreter(help_str='help str')
-    
-    @classmethod
-    def tearDownClass(self) -> None:
-        self.cmdInterp = None
+    def setUpClass(cls) -> None:
+        cls.message = Message(msgType='test')
+        cls.cmdInterp = CommandInterpreter(help_str='help str')
 
     async def test_remind_me(self):
         '''test the remind me feature.'''
@@ -140,17 +132,11 @@ class TestCommandInterpreter(unittest.IsolatedAsyncioTestCase):
 class TestPersonalAssistant(unittest.IsolatedAsyncioTestCase):
     ''''''
     @classmethod
-    def setUpClass(self) -> None:
-        self.message = Message(msgType='test')
-        self.pa = PersonalAssistant()
-    
-    @classmethod
-    def tearDownClass(self) -> None:
-        self.pa = None
-
+    def setUpClass(cls) -> None:
+        cls.message = Message(msgType='test')
+        cls.pa = PersonalAssistant()
 
     # TODO:
-
 
 if __name__ == '__main__':
     unittest.main()

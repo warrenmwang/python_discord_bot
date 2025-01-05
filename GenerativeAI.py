@@ -60,7 +60,7 @@ class Stable_Diffusion(Image_Gen_Instance):
     def __init__(self):
         pass
 
-    def main(self, msg: Message) -> Image.Image:
+    async def main(self, msg: Message) -> Image.Image:
         # TODO:
         return Image.new('RGB', (1024, 1024), color='black')
 
@@ -694,7 +694,7 @@ class Anthropic_LLM(LLM_Instance):
     def __init__(self):
         pass
 
-    def main(self, msg: Message) -> str:
+    async def main(self, msg: Message) -> str:
         return "Anthropic LLM: TODO not yet implemented"
 
 #################### Control Classes #################### 
@@ -702,7 +702,7 @@ class Anthropic_LLM(LLM_Instance):
 class Image_Gen_Controller():
     def __init__(self, init_provider_name: str = "openai"):
         self.curr_provider = init_provider_name
-        self.providers: dict[str:Image_Gen_Instance] = {
+        self.providers = {
             "openai": Dalle(),
             "stable diffusion": Stable_Diffusion()
         }
@@ -718,7 +718,7 @@ class Image_Gen_Controller():
 class LLM_Controller():
     def __init__(self, init_provider_name: str = "openai"):
         self.curr_provider = init_provider_name
-        self.providers: dict[str:LLM_Instance] = {
+        self.providers = {
             "openai": OpenAI_LLM(),
             "anthropic": Anthropic_LLM()
         }

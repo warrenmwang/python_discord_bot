@@ -43,7 +43,7 @@ class CommandInterpreter:
             return self.help_str
 
         if command == "chroma status":
-            return "on" if self.enableRAG else "off"
+            return "on"
 
         if command[0:9] == "remind me":
             try:
@@ -87,8 +87,6 @@ class CommandInterpreter:
         ### Vector DB
         # user uploads a pdf to ingest into the vector db
         if command == "upload":
-            if not self.enableRAG:
-                return "RAG is not enabled. Upload cannot be performed."
             if msg.attachments:
                 for pdf in msg.attachments['pdfs']:
                     embedded_text, ocr_text = pdf.embedded_text, pdf.ocr_text
@@ -99,8 +97,6 @@ class CommandInterpreter:
             return "Upload complete."
 
         if command[:5] == "query":
-            if not self.enableRAG:
-                return "RAG is not enabled. Query cannot be performed."
             # get context from db
             db_query_prompt = command[6:]
             db_context = self.vectorDB.query(db_query_prompt)[0]
@@ -109,7 +105,7 @@ class CommandInterpreter:
             prompt = f"ORIGINAL USER QUERY:{command[6:]}\nVECTOR DB CONTEXT:{db_context}\nRESPONSE:"
             if self.gpt_interpreter is None:
                 raise Exception("command interpreter's unexpected gpt interpreter is None.")
-            gpt_response = await self.gpt_interpreter.mainNoAttachments(prompt)
+            gpt_response = await self.gpt_interpreter.main(Message.from_text(prompt))
 
             return gpt_response
 
